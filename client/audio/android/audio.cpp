@@ -23,6 +23,7 @@
 #include <cassert>
 #include <aaudio/AAudio.h>
 #include <pthread.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #include <netinet/tcp.h>
 
@@ -92,13 +93,26 @@ void wivrn::android::audio::input(AAudioStream * stream, const xrt::drivers::wiv
 
 	try
 	{
-		// while(!quit)
-		// {
-  //
-		// }
+    AAudioStream_requestStart(stream);
+    aaudio_stream_state_t state;
+    aaudio_result_t result = AAudioStream_waitForStateChange(stream, AAUDIO_STREAM_STATE_STARTING, &state, 1'000'000'000);
+    if (result != AAUDIO_OK)
+        throw std::runtime_error(std::string("Cannot start input stream: ") + AAudio_convertResultToText(result));
+
+    char buffer[2000];
+    const int frame_size = format.num_channels * sizeof(int16_t);
+    const int max_frames = 2000 / frame_size;
+
+		while(!quit)
+		{
+      result = AAudioStream_read(stream, buffer, max_frames, 1'000'000'000);
+      if (result > 0)
+          send(fd, buffer, frame_size * result, 0);
+		}
 	}
-	catch(...)
+	catch(std::exception& e)
 	{
+		spdlog::error("Error in audio input thread: {}", e.what());
 		quit = true;
 	}
 
