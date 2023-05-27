@@ -36,6 +36,7 @@ static const char * sink_pipe = "wivrn-sink";
 static unsigned int buffer_size_ms = 10;
 
 // max allowed bytes in the output pipe before we start discarding data
+// total buffer size = buffer_size_ms + buffer_size_ms * buffer_size_mult
 static unsigned int buffer_size_mult = 4;
 
 struct module_entry
@@ -364,7 +365,7 @@ struct pulse_publish_handle : public audio_publish_handle
 			if (microphone)
 			{
 				bufsize[num_pairs] = mic_buf_size;
-				max_bytes_in_pipe[num_pairs] = spk_buf_size * buffer_size_mult;
+				max_bytes_in_pipe[num_pairs] = mic_buf_size * buffer_size_mult;
 
 				mic_pipe = open(microphone->socket.c_str(), O_WRONLY);
 				if (mic_pipe.get_fd() < 0)
