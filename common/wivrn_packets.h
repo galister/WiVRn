@@ -73,6 +73,7 @@ enum class device_id : uint8_t
 	RIGHT_THUMBSTICK_CLICK,  // /user/hand/right/input/thumbstick/click
 	RIGHT_THUMBSTICK_TOUCH,  // /user/hand/right/input/thumbstick/touch
 	RIGHT_THUMBREST_TOUCH,   // /user/hand/right/input/thumbrest/touch
+	EYE_GAZE,                // /user/eyes_ext/input/gaze_ext/pose
 };
 
 enum video_codec
@@ -182,6 +183,23 @@ struct hand_tracking
 	std::optional<std::array<pose, XR_HAND_JOINT_COUNT_EXT>> joints;
 };
 
+struct fb2_face_expressions
+{
+	std::array<float, XR_FACE_EXPRESSION2_COUNT_FB> weights;
+	std::array<float, XR_FACE_CONFIDENCE2_COUNT_FB> confidences;
+};
+
+struct eye_tracking
+{
+	struct eye
+	{
+		// Negative when invalid
+		float confidence;
+		XrPosef pose;
+	};
+	std::array<eye, 2> eyes;
+};
+
 struct inputs
 {
 	struct input_value
@@ -218,7 +236,7 @@ struct feedback
 	std::array<XrPosef, 2> real_pose;
 };
 
-using packets = std::variant<headset_info_packet, feedback, audio_data, handshake, tracking, hand_tracking, inputs, timesync_response>;
+using packets = std::variant<headset_info_packet, feedback, audio_data, handshake, tracking, hand_tracking, eye_tracking, fb2_face_expressions, inputs, timesync_response>;
 } // namespace from_headset
 
 namespace to_headset

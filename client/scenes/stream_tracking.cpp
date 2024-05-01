@@ -22,6 +22,7 @@
 #include "utils/ranges.h"
 #include <spdlog/spdlog.h>
 #include <thread>
+#include <openxr/openxr.h>
 
 static from_headset::tracking::pose locate_space(device_id device, XrSpace space, XrSpace reference, XrTime time)
 {
@@ -106,6 +107,29 @@ static std::optional<std::array<from_headset::hand_tracking::pose, XR_HAND_JOINT
 		return std::nullopt;
 }
 
+static std::optional<XrPosef> locate_gaze(XrSpace space, XrSpace reference, XrTime time)
+{
+	XrEyeGazeSampleTimeEXT sample_time{
+	        .type = XR_TYPE_EYE_GAZE_SAMPLE_TIME_EXT,
+	        .time = time,
+	};
+
+	XrSpaceLocation location{
+	        .type = XR_TYPE_SPACE_LOCATION,
+	        .next = &sample_time,
+	};
+
+	xrLocateSpace(space, reference, time, &location);
+
+	if (location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT and
+	    location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)
+	{
+		return location.pose;
+	}
+	else
+		return std::nullopt;
+}
+
 void scenes::stream::tracking()
 {
 #ifdef __ANDROID__
@@ -118,6 +142,11 @@ void scenes::stream::tracking()
 	        {device_id::LEFT_GRIP, application::left_grip()},
 	        {device_id::RIGHT_AIM, application::right_aim()},
 	        {device_id::RIGHT_GRIP, application::right_grip()}};
+
+	if (application::get_eye_gaze_supported())
+	{
+		spaces.push_back({device_id::EYE_GAZE, application::eye_gaze()});
+	}
 
 	XrSpace view_space = application::view();
 	XrDuration tracking_period = 1'000'000; // Send tracking data every 1ms
@@ -169,6 +198,13 @@ void scenes::stream::tracking()
 						packet.device_poses.push_back(locate_space(device, space, world_space, t0 + Δt));
 					}
 
+					if (application::get_eye_gaze_supported())
+					{
+						auto gaze = locate_gaze(application::eye_gaze(), world_space, t0 + Δt);
+						if (gaze)
+							packet.device_poses.push_back(*gaze);
+					}
+
 					network_session->send_stream(packet);
 
 					if (application::get_hand_tracking_supported())
@@ -180,6 +216,13 @@ void scenes::stream::tracking()
 						hands.hand = xrt::drivers::wivrn::from_headset::hand_tracking::right;
 						hands.joints = locate_hands(application::get_right_hand(), world_space, hands.timestamp);
 						network_session->send_stream(hands);
+					}
+
+					if (application::get_fb2_face_tracking_supported())
+					{
+						auto expressions = application::get_fb2_face_tracker().get_weights(t0 + Δt);
+						if (expressions)
+							network_session->send_stream(*expressions);
 					}
 				}
 				catch (const std::system_error & e)

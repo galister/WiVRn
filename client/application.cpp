@@ -37,6 +37,7 @@
 #include <thread>
 #include <vector>
 #include <vk_mem_alloc.h>
+#include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 #include <openxr/openxr_platform.h>
 
@@ -84,6 +85,12 @@ static std::vector<interaction_profile> interaction_profiles{
                         "/user/hand/right/input/menu/click",
                         "/user/hand/right/input/select/click",
 
+                }},
+        interaction_profile{
+                "/interaction_profiles/ext/eye_gaze_interaction",
+                {"XR_EXT_eye_gaze_interaction"},
+                {
+                        "/user/eyes_ext/input/gaze_ext/pose",
                 }},
         interaction_profile{
                 "/interaction_profiles/oculus/touch_controller",
@@ -643,6 +650,8 @@ void application::initialize_actions()
 			right_grip_space = xr_session.create_action_space(a);
 		else if (name == "/user/hand/right/input/aim/pose")
 			right_aim_space = xr_session.create_action_space(a);
+		else if (name == "/user/eyes_ext/input/gaze_ext/pose")
+			eye_gaze_space = xr_session.create_action_space(a);
 	}
 
 	// Build an action set for each scene
@@ -726,6 +735,8 @@ void application::initialize()
 	opt_extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
 	opt_extensions.push_back(XR_HTC_PASSTHROUGH_EXTENSION_NAME);
 
+	opt_extensions.push_back(XR_FB_FACE_TRACKING2_EXTENSION_NAME);
+
 	for (const auto & i: interaction_profiles)
 	{
 		for (const auto & j: i.required_extensions)
@@ -777,6 +788,20 @@ void application::initialize()
 		hand_tracking_supported = hand_tracking_properties.supportsHandTracking;
 	}
 
+	if (utils::contains(xr_extensions, XR_FB_FACE_TRACKING2_EXTENSION_NAME))
+	{
+		XrSystemFaceTrackingProperties2FB face_tracking_properties = xr_system_id.fb2_face_tracking_properties();
+		spdlog::info("    Visual face tracking support: {}", (bool)face_tracking_properties.supportsVisualFaceTracking);
+		fb2_face_tracking_supported = face_tracking_properties.supportsVisualFaceTracking;
+	}
+
+	if (utils::contains(xr_extensions, XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME))
+	{
+		XrSystemEyeGazeInteractionPropertiesEXT eye_gaze_properties = xr_system_id.eye_gaze_interaction_properties();
+		spdlog::info("    Eye gaze support: {}", (bool)eye_gaze_properties.supportsEyeGazeInteraction);
+		eye_gaze_supported = eye_gaze_properties.supportsEyeGazeInteraction;
+	}
+
 	switch (xr_system_id.passthrough_supported())
 	{
 		case xr::system::passthrough_type::no_passthrough:
@@ -812,6 +837,11 @@ void application::initialize()
 	{
 		left_hand = xr_session.create_hand_tracker(XR_HAND_LEFT_EXT);
 		right_hand = xr_session.create_hand_tracker(XR_HAND_RIGHT_EXT);
+	}
+
+	if (fb2_face_tracking_supported)
+	{
+		fb2_face_tracker = xr_session.create_fb2_face_tracker();
 	}
 
 	vk::CommandPoolCreateInfo cmdpool_create_info;

@@ -66,6 +66,7 @@ static const std::unordered_map<std::string, device_id> device_ids = {
 	{"/user/hand/right/input/thumbstick/click", device_id::RIGHT_THUMBSTICK_CLICK},
 	{"/user/hand/right/input/thumbstick/touch", device_id::RIGHT_THUMBSTICK_TOUCH},
 	{"/user/hand/right/input/thumbrest/touch",  device_id::RIGHT_THUMBREST_TOUCH},
+  {"/user/eyes_ext/input/gaze_ext/pose",      device_id::EYE_GAZE},
 };
 // clang-format on
 

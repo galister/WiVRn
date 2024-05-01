@@ -19,7 +19,9 @@
 
 #pragma once
 
+#include "xr/fb2_face_tracker.h"
 #include "xr/hand_tracker.h"
+#include "xr/space.h"
 #ifdef __ANDROID__
 #include <android_native_app_glue.h>
 #endif
@@ -117,6 +119,12 @@ class application : public singleton<application>
 	bool hand_tracking_supported = false;
 	xr::hand_tracker left_hand;
 	xr::hand_tracker right_hand;
+
+	bool fb2_face_tracking_supported = false;
+	xr::fb2_face_tracker fb2_face_tracker;
+
+	bool eye_gaze_supported = false;
+	xr::space eye_gaze_space;
 
 	bool session_running = false;
 	bool session_focused = false;
@@ -291,6 +299,10 @@ public:
 	{
 		return instance().right_aim_space;
 	};
+	static XrSpace eye_gaze()
+	{
+		return instance().eye_gaze_space;
+	};
 
 	static void ignore_debug_reports_for(void * object)
 	{
@@ -389,6 +401,21 @@ public:
 	static bool get_hand_tracking_supported()
 	{
 		return instance().hand_tracking_supported;
+	}
+
+	static bool get_fb2_face_tracking_supported()
+	{
+		return instance().fb2_face_tracking_supported;
+	}
+
+	static bool get_eye_gaze_supported()
+	{
+		return instance().eye_gaze_supported;
+	}
+
+	static xr::fb2_face_tracker & get_fb2_face_tracker()
+	{
+		return instance().fb2_face_tracker;
 	}
 
 	static xr::hand_tracker & get_left_hand()

@@ -23,6 +23,7 @@
 #include "utils/ranges.h"
 #include "xr.h"
 #include <vulkan/vulkan.h>
+#include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
 xr::session::session(xr::instance & inst, xr::system & sys, vk::raii::Instance & vk_inst, vk::raii::PhysicalDevice & pdev, vk::raii::Device & dev, int queue_family_index) :
@@ -98,6 +99,46 @@ xr::hand_tracker xr::session::create_hand_tracker(XrHandEXT hand, XrHandJointSet
 	CHECK_XR(xrCreateHandTrackerEXT(id, &create_info, &ht));
 	return {*inst, ht};
 }
+
+xr::fb2_face_tracker xr::session::create_fb2_face_tracker()
+{
+	XrFaceTrackingDataSource2FB data_sources[1];
+	data_sources[0] = XR_FACE_TRACKING_DATA_SOURCE2_VISUAL_FB;
+
+	XrFaceTrackerCreateInfo2FB create_info{
+	        .type = XR_TYPE_FACE_TRACKER_CREATE_INFO2_FB,
+	        .next = nullptr,
+	        .faceExpressionSet = XR_FACE_EXPRESSION_SET2_DEFAULT_FB,
+	        .requestedDataSourceCount = 1,
+	        .requestedDataSources = data_sources,
+	};
+
+	XrFaceTracker2FB ft;
+
+	auto xrCreateFaceTracker2FB = inst->get_proc<PFN_xrCreateFaceTracker2FB>("xrCreateFaceTracker2FB");
+	assert(xrCreateFaceTracker2FB);
+
+	CHECK_XR(xrCreateFaceTracker2FB(id, &create_info, &ft));
+	return {*inst, ft};
+}
+
+#if 0
+xr::fb_eye_tracker xr::session::create_fb_eye_tracker()
+{
+	XrEyeTrackerCreateInfoFB create_info{
+	        .type = XR_TYPE_EYE_TRACKER_CREATE_INFO_FB,
+	        .next = nullptr,
+	};
+
+	auto xrCreateEyeTrackerFB = inst->get_proc<PFN_xrCreateEyeTrackerFB>("xrCreateEyeTrackerFB");
+	assert(xrCreateEyeTrackerFB);
+
+	XrEyeTrackerFB et;
+
+	CHECK_XR(xrCreateEyeTrackerFB(id, &create_info, &et));
+	return {*inst, et};
+}
+#endif
 
 std::vector<vk::Format> xr::session::get_swapchain_formats() const
 {
