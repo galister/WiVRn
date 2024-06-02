@@ -107,29 +107,6 @@ static std::optional<std::array<from_headset::hand_tracking::pose, XR_HAND_JOINT
 		return std::nullopt;
 }
 
-static std::optional<XrPosef> locate_gaze(XrSpace space, XrSpace reference, XrTime time)
-{
-	XrEyeGazeSampleTimeEXT sample_time{
-	        .type = XR_TYPE_EYE_GAZE_SAMPLE_TIME_EXT,
-	        .time = time,
-	};
-
-	XrSpaceLocation location{
-	        .type = XR_TYPE_SPACE_LOCATION,
-	        .next = &sample_time,
-	};
-
-	xrLocateSpace(space, reference, time, &location);
-
-	if (location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT and
-	    location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)
-	{
-		return location.pose;
-	}
-	else
-		return std::nullopt;
-}
-
 void scenes::stream::tracking()
 {
 #ifdef __ANDROID__
@@ -196,13 +173,6 @@ void scenes::stream::tracking()
 					for (auto [device, space]: spaces)
 					{
 						packet.device_poses.push_back(locate_space(device, space, world_space, t0 + Δt));
-					}
-
-					if (application::get_eye_gaze_supported())
-					{
-						auto gaze = locate_gaze(application::eye_gaze(), world_space, t0 + Δt);
-						if (gaze)
-							packet.device_poses.push_back(*gaze);
 					}
 
 					network_session->send_stream(packet);
