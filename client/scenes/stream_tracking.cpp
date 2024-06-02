@@ -20,9 +20,29 @@
 #include "application.h"
 #include "stream.h"
 #include "utils/ranges.h"
+#include <arpa/inet.h>
 #include <spdlog/spdlog.h>
+#include <sys/socket.h>
 #include <thread>
+#include <openxr/openxr.h>
 
+std::string ip_address_to_string(const in_addr & address)
+{
+	char buffer[128];
+	if (inet_ntop(AF_INET, &address, buffer, sizeof(buffer)))
+		return buffer;
+
+	return "";
+}
+
+std::string ip_address_to_string(const in6_addr & address)
+{
+	char buffer[128];
+	if (inet_ntop(AF_INET6, &address, buffer, sizeof(buffer)))
+		return buffer;
+
+	return "";
+}
 static from_headset::tracking::pose locate_space(device_id device, XrSpace space, XrSpace reference, XrTime time)
 {
 	XrSpaceVelocity velocity{
@@ -133,6 +153,13 @@ static std::optional<std::array<from_headset::hand_tracking::pose, XR_HAND_JOINT
 		return std::nullopt;
 }
 
+struct tracking_payload
+{
+	XrQuaternionf left_eye;
+	XrQuaternionf right_eye;
+	float face_fb[70];
+};
+
 void scenes::stream::tracking()
 {
 #ifdef __ANDROID__
@@ -152,6 +179,35 @@ void scenes::stream::tracking()
 
 	XrTime t0 = instance.now();
 	from_headset::tracking packet{};
+
+	tracking_payload pload = {
+	        .left_eye = {0, 0, 0, 1},
+	        .right_eye = {0, 0, 0, 1},
+	        .face_fb = {0}};
+
+	struct sockaddr servaddr;
+	memset(&servaddr, 0, sizeof(servaddr));
+	int sock_fd;
+	if (std::holds_alternative<in6_addr>(network_session->address))
+	{
+		sock_fd = socket(AF_INET6, SOCK_DGRAM, 0);
+		auto in6_addr = (sockaddr_in6 *)&servaddr;
+		in6_addr->sin6_addr = std::get<1>(network_session->address);
+		in6_addr->sin6_family = AF_INET6;
+		in6_addr->sin6_port = htons(9009);
+		spdlog::info("Tracking address: {}", ip_address_to_string(in6_addr->sin6_addr));
+	}
+	else
+	{
+		sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+		auto in_addr = (sockaddr_in *)&servaddr;
+		in_addr->sin_addr = std::get<0>(network_session->address);
+		in_addr->sin_family = AF_INET;
+		in_addr->sin_port = htons(9009);
+		spdlog::info("Tracking address: {}", ip_address_to_string(in_addr->sin_addr));
+	}
+
+	// TODO ipv6
 
 	while (not exiting)
 	{
@@ -214,6 +270,24 @@ void scenes::stream::tracking()
 						hands.joints = locate_hands(application::get_right_hand(), local_floor, hands.timestamp);
 						t.pause();
 						network_session->send_stream(hands);
+						t.resume();
+					}
+
+					{
+						t.pause();
+						auto gazes = application::get_fb_eye_tracker().get_gazes(view_space, t0 + Δt);
+						auto expressions = application::get_fb_face_tracker().get_weights(t0 + Δt);
+						if (gazes.has_value() && expressions.has_value())
+						{
+							auto [left, right] = gazes.value();
+							pload.left_eye = left.orientation;
+							pload.right_eye = right.orientation;
+							auto face = expressions.value();
+							for (int i = 0; i < 70; i++)
+								pload.face_fb[i] = face.weights[i];
+
+							sendto(sock_fd, &pload, sizeof(tracking_payload), 0, &servaddr, sizeof(servaddr));
+						}
 						t.resume();
 					}
 

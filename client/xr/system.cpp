@@ -86,6 +86,41 @@ XrSystemHandTrackingPropertiesEXT xr::system::hand_tracking_properties() const
 
 	return hand_tracking_prop;
 }
+XrSystemFaceTrackingProperties2FB xr::system::fb_face_tracking_properties() const
+{
+	if (!id)
+		throw std::invalid_argument("this");
+
+	XrSystemFaceTrackingProperties2FB face_tracking_prop{
+	        .type = XR_TYPE_SYSTEM_FACE_TRACKING_PROPERTIES2_FB,
+	};
+
+	XrSystemProperties prop{
+	        .type = XR_TYPE_SYSTEM_PROPERTIES,
+	        .next = &face_tracking_prop,
+	};
+	CHECK_XR(xrGetSystemProperties(*inst, id, &prop));
+
+	return face_tracking_prop;
+}
+
+XrSystemEyeTrackingPropertiesFB xr::system::fb_eye_tracking_properties() const
+{
+	if (!id)
+		throw std::invalid_argument("this");
+
+	XrSystemEyeTrackingPropertiesFB eye_tracking_prop{
+	        .type = XR_TYPE_SYSTEM_EYE_TRACKING_PROPERTIES_FB,
+	};
+
+	XrSystemProperties prop{
+	        .type = XR_TYPE_SYSTEM_PROPERTIES,
+	        .next = &eye_tracking_prop,
+	};
+	CHECK_XR(xrGetSystemProperties(*inst, id, &prop));
+
+	return eye_tracking_prop;
+}
 
 xr::system::passthrough_type xr::system::passthrough_supported() const
 {

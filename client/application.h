@@ -20,6 +20,8 @@
 #pragma once
 
 #include "configuration.h"
+#include "xr/fb_eye_tracker.h"
+#include "xr/fb_face_tracker.h"
 #include "xr/hand_tracker.h"
 #ifdef __ANDROID__
 #include <android_native_app_glue.h>
@@ -125,6 +127,12 @@ class application : public singleton<application>
 	bool hand_tracking_supported = false;
 	xr::hand_tracker left_hand;
 	xr::hand_tracker right_hand;
+
+	bool fb_face_tracking_supported = false;
+	xr::fb_face_tracker fb_face_tracker;
+
+	bool fb_eye_tracking_supported = false;
+	xr::fb_eye_tracker fb_eye_tracker;
 
 	bool session_running = false;
 	bool session_focused = false;
@@ -402,6 +410,26 @@ public:
 	static bool get_hand_tracking_supported()
 	{
 		return instance().hand_tracking_supported;
+	}
+
+	static bool get_fb_face_tracking_supported()
+	{
+		return instance().fb_face_tracking_supported;
+	}
+
+	static bool get_fb_eye_tracking_supported()
+	{
+		return instance().fb_eye_tracking_supported;
+	}
+
+	static xr::fb_face_tracker & get_fb_face_tracker()
+	{
+		return instance().fb_face_tracker;
+	}
+
+	static xr::fb_eye_tracker & get_fb_eye_tracker()
+	{
+		return instance().fb_eye_tracker;
 	}
 
 	static xr::hand_tracker & get_left_hand()
