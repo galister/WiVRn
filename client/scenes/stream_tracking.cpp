@@ -255,7 +255,7 @@ void scenes::stream::tracking()
 					}
 
 					t.pause();
-					network_session->send_control(packet);
+					network_session->send_stream(packet);
 					t.resume();
 
 					if (application::get_hand_tracking_supported())
