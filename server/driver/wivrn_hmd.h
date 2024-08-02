@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "wivrn_packets.h"
+#include "xrt/xrt_defines.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_tracking.h"
 
@@ -36,7 +38,7 @@ class wivrn_hmd : public xrt_device
 {
 	std::mutex mutex;
 
-	xrt_input pose_input;
+	std::vector<xrt_input> inputs_array;
 	xrt_hmd_parts hmd_parts;
 	xrt_tracking_origin tracking_origin{
 	        .name = "WiVRn origin",
@@ -48,6 +50,7 @@ class wivrn_hmd : public xrt_device
 
 	view_list views;
 	pose_list gaze;
+	xrt_facial_expression_set face{};
 	std::array<to_headset::video_stream_description::foveation_parameter, 2> foveation_parameters{};
 
 	std::shared_ptr<xrt::drivers::wivrn::wivrn_session> cnx;
@@ -72,7 +75,10 @@ public:
 	                    xrt_fov * out_fovs,
 	                    xrt_pose * out_poses);
 
+	xrt_result_t get_face_tracking(enum xrt_input_name facial_expression_type, struct xrt_facial_expression_set * out_value);
+
 	void update_tracking(const from_headset::tracking &, const clock_offset &);
+	void update_fb_face2(const from_headset::fb_face2 & new_face);
 
 	decltype(foveation_parameters) set_foveated_size(uint32_t width, uint32_t height);
 };

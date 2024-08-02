@@ -23,15 +23,16 @@ set(XRT_BUILD_DRIVER_WMR                OFF)
 set(XRT_BUILD_DRIVER_XREAL_AIR          OFF)
 set(XRT_BUILD_SAMPLES                   OFF)
 
-set(XRT_FEATURE_COMPOSITOR_NULL      OFF)
-set(XRT_FEATURE_SERVICE              ON)
-set(XRT_FEATURE_SERVICE_SYSTEMD      OFF)
-set(XRT_FEATURE_SLAM                 OFF)
-set(XRT_FEATURE_STEAMVR_PLUGIN       OFF)
-set(XRT_FEATURE_WINDOW_PEEK          OFF)
-set(XRT_FEATURE_STEAMVR_PLUGIN       OFF)
-set(XRT_FEATURE_WINDOW_PEEK          OFF)
-set(XRT_FEATURE_WINDOW_PEEK          OFF)
+set(XRT_FEATURE_COMPOSITOR_NULL          OFF)
+set(XRT_FEATURE_SERVICE                  ON)
+set(XRT_FEATURE_SERVICE_SYSTEMD          OFF)
+set(XRT_FEATURE_SLAM                     OFF)
+set(XRT_FEATURE_STEAMVR_PLUGIN           OFF)
+set(XRT_FEATURE_WINDOW_PEEK              OFF)
+set(XRT_FEATURE_STEAMVR_PLUGIN           OFF)
+set(XRT_FEATURE_WINDOW_PEEK              OFF)
+set(XRT_FEATURE_WINDOW_PEEK              OFF)
+set(XRT_FEATURE_OPENXR_FACE_TRACKING2_FB ON)
 
 set(XRT_HAVE_BLUETOOTH               OFF)
 set(XRT_HAVE_GST                     OFF)
@@ -57,38 +58,38 @@ set(XRT_OXR_RUNTIME_SUFFIX        "wivrn"          CACHE STRING "OpenXR client l
 FetchContent_MakeAvailable(monado)
 
 add_executable(wivrn-server
-		accept_connection.cpp
-		active_runtime.cpp
-		avahi_publisher.cpp
-		hostname.cpp
-		main.cpp
-		start_application.cpp
-		target_instance_wivrn.cpp
-		wivrn_ipc.cpp
+  accept_connection.cpp
+  active_runtime.cpp
+  avahi_publisher.cpp
+  hostname.cpp
+  main.cpp
+  start_application.cpp
+  target_instance_wivrn.cpp
+  wivrn_ipc.cpp
 
-		audio/audio_setup.cpp
+  audio/audio_setup.cpp
 
-		encoder/encoder_settings.cpp
-		encoder/video_encoder.cpp
-		encoder/yuv_converter.cpp
+  encoder/encoder_settings.cpp
+  encoder/video_encoder.cpp
+  encoder/yuv_converter.cpp
 
-		driver/clock_offset.cpp
-		driver/configuration.cpp
-		driver/wivrn_hmd.cpp
-		driver/wivrn_pacer.cpp
-		driver/wivrn_comp_target.cpp
-		driver/wivrn_controller.cpp
-		driver/pose_list.cpp
-		driver/view_list.cpp
-		driver/hand_joints_list.cpp
-		driver/wivrn_session.cpp
-		driver/wivrn_connection.cpp
-		driver/xrt_cast.cpp
+  driver/clock_offset.cpp
+  driver/configuration.cpp
+  driver/wivrn_hmd.cpp
+  driver/wivrn_pacer.cpp
+  driver/wivrn_comp_target.cpp
+  driver/wivrn_controller.cpp
+  driver/pose_list.cpp
+  driver/view_list.cpp
+  driver/hand_joints_list.cpp
+  driver/wivrn_session.cpp
+  driver/wivrn_connection.cpp
+  driver/xrt_cast.cpp
 
-		utils/wivrn_vk_bundle.cpp
+  utils/wivrn_vk_bundle.cpp
 
-		${WIVRN_SHADER_HEADERS}
-	)
+  ${WIVRN_SHADER_HEADERS}
+ )
 target_compile_features(wivrn-server PRIVATE cxx_std_20)
 target_compile_definitions(wivrn-server PRIVATE VULKAN_HPP_NO_CONSTRUCTORS)
 
@@ -98,42 +99,42 @@ target_include_directories(wivrn-server PRIVATE .)
 target_link_libraries(wivrn-server PRIVATE CLI11::CLI11)
 
 if(WIVRN_USE_NVENC)
-        target_sources(wivrn-server PRIVATE encoder/video_encoder_nvenc.cpp)
+  target_sources(wivrn-server PRIVATE encoder/video_encoder_nvenc.cpp)
 endif()
 
 if(WIVRN_USE_VAAPI)
-        target_sources(
+  target_sources(
                 wivrn-server
                 PRIVATE encoder/ffmpeg/video_encoder_ffmpeg.cpp
                         encoder/ffmpeg/video_encoder_va.cpp
                         encoder/ffmpeg/ffmpeg_helper.cpp
                 )
-        target_link_libraries(wivrn-server PRIVATE PkgConfig::LIBAV PkgConfig::LIBDRM)
+  target_link_libraries(wivrn-server PRIVATE PkgConfig::LIBAV PkgConfig::LIBDRM)
 endif()
 
 if(WIVRN_USE_X264)
-        target_sources(wivrn-server PRIVATE encoder/video_encoder_x264.cpp)
-        target_link_libraries(wivrn-server PRIVATE PkgConfig::X264)
+  target_sources(wivrn-server PRIVATE encoder/video_encoder_x264.cpp)
+  target_link_libraries(wivrn-server PRIVATE PkgConfig::X264)
 endif()
 
 if(WIVRN_USE_SYSTEMD)
-        target_link_libraries(wivrn-server PRIVATE PkgConfig::SYSTEMD)
+  target_link_libraries(wivrn-server PRIVATE PkgConfig::SYSTEMD)
 endif()
 
 if(WIVRN_USE_PIPEWIRE)
-	target_sources(
-		wivrn-server
-		PRIVATE audio/audio_pipewire.cpp
-		)
-	target_link_libraries(wivrn-server PRIVATE PkgConfig::libpipewire)
+  target_sources(
+  wivrn-server
+  PRIVATE audio/audio_pipewire.cpp
+  )
+  target_link_libraries(wivrn-server PRIVATE PkgConfig::libpipewire)
 endif()
 
 if(WIVRN_USE_PULSEAUDIO)
-	target_sources(
-		wivrn-server
-		PRIVATE audio/audio_pulse.cpp
-		)
-	target_link_libraries(wivrn-server PRIVATE PkgConfig::libpulse)
+  target_sources(
+  wivrn-server
+  PRIVATE audio/audio_pulse.cpp
+  )
+  target_link_libraries(wivrn-server PRIVATE PkgConfig::libpulse)
 endif()
 
 include(CompileGLSL)
@@ -143,34 +144,34 @@ target_sources(wivrn-server PRIVATE ${LOCAL_SOURCE} ${VULKAN_SHADERS})
 wivrn_compile_glsl(wivrn-server ${VULKAN_SHADERS})
 
 target_link_libraries(
-	wivrn-server
-	PRIVATE
-		aux_os
-		aux_util
-		aux_vk
-		comp_main
-		ipc_server
-		xrt-external-openxr
-		xrt-interfaces
+ wivrn-server
+ PRIVATE
+  aux_os
+  aux_util
+  aux_vk
+  comp_main
+  ipc_server
+  xrt-external-openxr
+  xrt-interfaces
 
-		PkgConfig::AVAHI
-		Eigen3::Eigen
-		wivrn-common
-		wivrn-external
-		nlohmann_json::nlohmann_json
-	)
+  PkgConfig::AVAHI
+  Eigen3::Eigen
+  wivrn-common
+  wivrn-external
+  nlohmann_json::nlohmann_json
+ )
 
 configure_file(dist/wivrn.service.in wivrn.service)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/wivrn.service
-	DESTINATION lib/systemd/user/)
+ DESTINATION lib/systemd/user/)
 
 configure_file(dist/wivrn-application.service.in wivrn-application.service)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/wivrn-application.service
-	DESTINATION lib/systemd/user/)
+ DESTINATION lib/systemd/user/)
 
 install(FILES dist/firewalld-wivrn.xml
-	RENAME wivrn.xml
-	DESTINATION lib/firewalld/services)
+ RENAME wivrn.xml
+ DESTINATION lib/firewalld/services)
 
 install(TARGETS wivrn-server)
 
@@ -178,16 +179,16 @@ set_target_properties(${RUNTIME_TARGET} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 set(_extra_args)
 if(WIVRN_OPENXR_INSTALL_ABSOLUTE_RUNTIME_PATH)
-set(_extra_args ABSOLUTE_RUNTIME_PATH)
+  set(_extra_args ABSOLUTE_RUNTIME_PATH)
 else()
-set(_extra_args RUNTIME_DIR_RELATIVE_TO_MANIFEST ../../../${CMAKE_INSTALL_LIBDIR})
+  set(_extra_args RUNTIME_DIR_RELATIVE_TO_MANIFEST ../../../${CMAKE_INSTALL_LIBDIR})
 endif()
 
 generate_openxr_runtime_manifest_at_install(
-	${_extra_args}
-	RUNTIME_TARGET ${RUNTIME_TARGET}
-	DESTINATION share/openxr/1
-	RELATIVE_RUNTIME_DIR ${CMAKE_INSTALL_LIBDIR}
-	)
+ ${_extra_args}
+ RUNTIME_TARGET ${RUNTIME_TARGET}
+ DESTINATION share/openxr/1
+ RELATIVE_RUNTIME_DIR ${CMAKE_INSTALL_LIBDIR}
+ )
 install(TARGETS ${RUNTIME_TARGET}
-	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Runtime)
+ LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Runtime)

@@ -96,6 +96,13 @@ android {
                 enableV2Signing true
             }
         }
+        debug {
+            storeFile file("${rootDir}/debug.keystore")
+            keyAlias 'debug'
+            storePassword 'android'
+            keyPassword 'android'
+            enableV2Signing true
+        }
     }
 
     buildTypes {
@@ -103,6 +110,14 @@ android {
             release {
                 signingConfig signingConfigs.release
             }
+        } else {
+            release {
+                signingConfig signingConfigs.debug
+            }
+        }
+
+        debug {
+            signingConfig signingConfigs.debug
         }
 
         releaseDebuggable {
