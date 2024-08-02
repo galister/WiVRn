@@ -144,6 +144,9 @@ xrt_result_t xrt::drivers::wivrn::wivrn_session::create_session(xrt::drivers::wi
 	if (self->hmd)
 		usysds->base.base.static_roles.head = devices->xdevs[n++] = self->hmd.get();
 
+	if (self->hmd->face_tracking_supported)
+		usysds->base.base.static_roles.face = self->hmd.get();
+
 	if (self->left_hand)
 	{
 		devices->xdevs[n++] = self->left_hand.get();
@@ -267,7 +270,10 @@ void wivrn_session::operator()(from_headset::hand_tracking && hand_tracking)
 	left_hand->update_hand_tracking(hand_tracking, offset);
 	right_hand->update_hand_tracking(hand_tracking, offset);
 }
-
+void wivrn_session::operator()(from_headset::fb_face2 && fb_face2)
+{
+	hmd->update_fb_face2(fb_face2);
+}
 void wivrn_session::operator()(from_headset::inputs && inputs)
 {
 	auto offset = get_offset();

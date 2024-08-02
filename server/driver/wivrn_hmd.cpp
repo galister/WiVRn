@@ -19,6 +19,7 @@
 
 #include "wivrn_hmd.h"
 
+#include "os/os_time.h"
 #include "xrt/xrt_defines.h"
 #include "xrt/xrt_device.h"
 
@@ -69,6 +70,10 @@ static void wivrn_hmd_get_view_poses(xrt_device * xdev,
                                      xrt_space_relation * out_head_relation,
                                      xrt_fov * out_fovs,
                                      xrt_pose * out_poses);
+
+static xrt_result_t wivrn_hmd_get_face_tracking(struct xrt_device * xdev,
+                                                enum xrt_input_name facial_expression_type,
+                                                struct xrt_facial_expression_set * out_value);
 
 static double foveate(double a, double b, double λ, double c, double x)
 {
@@ -190,22 +195,35 @@ wivrn_hmd::wivrn_hmd(std::shared_ptr<xrt::drivers::wivrn::wivrn_session> cnx,
 	base->update_inputs = wivrn_hmd_update_inputs;
 	base->get_tracked_pose = wivrn_hmd_get_tracked_pose;
 	base->get_view_poses = wivrn_hmd_get_view_poses;
+	base->get_face_tracking = wivrn_hmd_get_face_tracking;
 	base->destroy = wivrn_hmd_destroy;
 	name = XRT_DEVICE_GENERIC_HMD;
 	device_type = XRT_DEVICE_TYPE_HMD;
 	orientation_tracking_supported = true;
 	// hand_tracking_supported = true;
 	position_tracking_supported = true;
+	face_tracking_supported = info.face_tracking2_fb;
 
 	// Print name.
 	strcpy(str, "WiVRn HMD");
 	strcpy(serial, "WiVRn HMD");
 
+	inputs_array.push_back({
+	        .active = true,
+	        .name = XRT_INPUT_GENERIC_HEAD_POSE,
+	});
+
+	if (info.face_tracking2_fb)
+	{
+		inputs_array.push_back({
+		        .active = true,
+		        .name = XRT_INPUT_FB_FACE_TRACKING2_VISUAL,
+		});
+	}
+
 	// Setup input.
-	pose_input.name = XRT_INPUT_GENERIC_HEAD_POSE;
-	pose_input.active = true;
-	inputs = &pose_input;
-	input_count = 1;
+	inputs = inputs_array.data();
+	input_count = inputs_array.size();
 
 	const auto config = configuration::read_user_configuration();
 
@@ -259,6 +277,16 @@ xrt_space_relation wivrn_hmd::get_tracked_pose(xrt_input_name name, uint64_t at_
 void wivrn_hmd::update_tracking(const from_headset::tracking & tracking, const clock_offset & offset)
 {
 	views.update_tracking(tracking, offset);
+}
+
+void wivrn_hmd::update_fb_face2(const from_headset::fb_face2 & new_face)
+{
+	memcpy(&face.face_expression_set2_fb.weights, new_face.weights.data(), sizeof(float) * new_face.weights.size());
+	memcpy(&face.face_expression_set2_fb.confidences, new_face.confidences.data(), sizeof(float) * new_face.confidences.size());
+	face.face_expression_set2_fb.is_valid = new_face.is_valid;
+	face.face_expression_set2_fb.is_eye_following_blendshapes_valid = new_face.is_eye_following_blendshapes_valid;
+	face.face_expression_set2_fb.data_source = XRT_FACE_TRACKING_DATA_SOURCE2_VISUAL_FB;
+	face.face_expression_set2_fb.sample_time_ns = os_monotonic_get_ns();
 }
 
 void wivrn_hmd::get_view_poses(const xrt_vec3 * default_eye_relation,
@@ -350,6 +378,17 @@ decltype(wivrn_hmd::foveation_parameters) wivrn_hmd::set_foveated_size(uint32_t 
 	return foveation_parameters;
 }
 
+xrt_result_t wivrn_hmd::get_face_tracking(enum xrt_input_name facial_expression_type, struct xrt_facial_expression_set * out_value)
+{
+	if (facial_expression_type == XRT_INPUT_FB_FACE_TRACKING2_VISUAL)
+	{
+		memcpy(out_value, &face, sizeof(xrt_facial_expression_set));
+		return XRT_SUCCESS;
+	}
+
+	return XRT_ERROR_NOT_IMPLEMENTED;
+}
+
 /*
  *
  * Functions
@@ -383,4 +422,11 @@ static void wivrn_hmd_get_view_poses(xrt_device * xdev,
                                      xrt_pose * out_poses)
 {
 	static_cast<wivrn_hmd *>(xdev)->get_view_poses(default_eye_relation, at_timestamp_ns, view_count, out_head_relation, out_fovs, out_poses);
+}
+
+static xrt_result_t wivrn_hmd_get_face_tracking(struct xrt_device * xdev,
+                                                enum xrt_input_name facial_expression_type,
+                                                struct xrt_facial_expression_set * out_value)
+{
+	return static_cast<wivrn_hmd *>(xdev)->get_face_tracking(facial_expression_type, out_value);
 }

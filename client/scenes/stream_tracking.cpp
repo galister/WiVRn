@@ -174,6 +174,7 @@ void scenes::stream::tracking()
 			for (XrDuration Δt = 0; Δt <= prediction; Δt += std::max<XrDuration>(1, prediction))
 			{
 				from_headset::hand_tracking hands{};
+				from_headset::fb_face2 fb_face2{};
 
 				packet.production_timestamp = t0;
 				hands.production_timestamp = t0;
@@ -218,6 +219,12 @@ void scenes::stream::tracking()
 						t.pause();
 						network_session->send_stream(hands);
 						t.resume();
+					}
+
+					if (application::get_fb_face_tracking2_supported())
+					{
+						application::get_fb_face_tracker2().get_weights(t0 + Δt, &fb_face2);
+						network_session->send_stream(fb_face2);
 					}
 
 					XrDuration busy_time = t.count();
