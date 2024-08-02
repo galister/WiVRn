@@ -123,6 +123,7 @@ class application : public singleton<application>
 	xr::space left_aim_space;
 	xr::space right_grip_space;
 	xr::space right_aim_space;
+	xr::space eye_gaze_space;
 
 	bool hand_tracking_supported = false;
 	xr::hand_tracker left_hand;
@@ -133,6 +134,8 @@ class application : public singleton<application>
 
 	bool fb_eye_tracking_supported = false;
 	xr::fb_eye_tracker fb_eye_tracker;
+
+	bool eye_gaze_supported = false;
 
 	bool session_running = false;
 	bool session_focused = false;
@@ -312,6 +315,10 @@ public:
 	{
 		return instance().right_aim_space;
 	};
+	static XrSpace eye_gaze()
+	{
+		return instance().eye_gaze_space;
+	};
 
 	static void ignore_debug_reports_for(void * object)
 	{
@@ -420,6 +427,11 @@ public:
 	static bool get_fb_eye_tracking_supported()
 	{
 		return instance().fb_eye_tracking_supported;
+	}
+
+	static bool get_eye_gaze_supported()
+	{
+		return instance().eye_gaze_supported;
 	}
 
 	static xr::fb_face_tracker & get_fb_face_tracker()

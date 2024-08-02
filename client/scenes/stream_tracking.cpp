@@ -20,7 +20,12 @@
 #include "application.h"
 #include "stream.h"
 #include "utils/ranges.h"
+#include "wivrn_packets.h"
 #include <arpa/inet.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/type_precision.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <spdlog/spdlog.h>
 #include <sys/socket.h>
 #include <thread>
@@ -153,6 +158,17 @@ static std::optional<std::array<from_headset::hand_tracking::pose, XR_HAND_JOINT
 		return std::nullopt;
 }
 
+XrVector2f eye_to_foveation(XrFovf fov, XrQuaternionf orientation)
+{
+	glm::quat q = {orientation.w, orientation.x, orientation.y, orientation.z};
+	auto euler = glm::eulerAngles(q);
+
+	return XrVector2f{
+	        .x = 1 - (euler.y - fov.angleLeft) / (fov.angleRight - fov.angleLeft) * 2,
+	        .y = (euler.x - fov.angleDown) / (fov.angleUp - fov.angleDown) * 2 - 1,
+	};
+}
+
 struct tracking_payload
 {
 	XrQuaternionf left_eye;
@@ -171,7 +187,8 @@ void scenes::stream::tracking()
 	        {device_id::LEFT_AIM, application::left_aim()},
 	        {device_id::LEFT_GRIP, application::left_grip()},
 	        {device_id::RIGHT_AIM, application::right_aim()},
-	        {device_id::RIGHT_GRIP, application::right_grip()}};
+	        {device_id::RIGHT_GRIP, application::right_grip()},
+	};
 
 	XrSpace view_space = application::view();
 	XrDuration tracking_period = 1'000'000; // Send tracking data every 1ms
@@ -258,6 +275,11 @@ void scenes::stream::tracking()
 					network_session->send_stream(packet);
 					t.resume();
 
+					if (application::get_eye_gaze_supported())
+					{
+						packet.eye_gaze = locate_space(device_id::EYE_GAZE, application::eye_gaze(), view_space, t0 + Δt);
+					}
+
 					if (application::get_hand_tracking_supported())
 					{
 						hands.hand = xrt::drivers::wivrn::from_headset::hand_tracking::left;
@@ -274,7 +296,6 @@ void scenes::stream::tracking()
 					}
 
 					{
-						t.pause();
 						auto gazes = application::get_fb_eye_tracker().get_gazes(view_space, t0 + Δt);
 						auto expressions = application::get_fb_face_tracker().get_weights(t0 + Δt);
 						if (gazes.has_value() && expressions.has_value())
@@ -282,13 +303,15 @@ void scenes::stream::tracking()
 							auto [left, right] = gazes.value();
 							pload.left_eye = left.orientation;
 							pload.right_eye = right.orientation;
+
 							auto face = expressions.value();
 							for (int i = 0; i < 70; i++)
 								pload.face_fb[i] = face.weights[i];
 
+							t.pause();
 							sendto(sock_fd, &pload, sizeof(tracking_payload), 0, &servaddr, sizeof(servaddr));
+							t.resume();
 						}
-						t.resume();
 					}
 
 					XrDuration busy_time = t.count();

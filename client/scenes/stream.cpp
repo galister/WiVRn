@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+#include <openxr/openxr.h>
 #define GLM_FORCE_RADIANS
 
 #include "stream.h"
@@ -66,6 +67,7 @@ static const std::unordered_map<std::string, device_id> device_ids = {
 	{"/user/hand/right/input/thumbstick/click", device_id::RIGHT_THUMBSTICK_CLICK},
 	{"/user/hand/right/input/thumbstick/touch", device_id::RIGHT_THUMBSTICK_TOUCH},
 	{"/user/hand/right/input/thumbrest/touch",  device_id::RIGHT_THUMBREST_TOUCH},
+	{"/user/eyes_ext/input/gaze_ext/pose",      device_id::EYE_GAZE},
 };
 // clang-format on
 
@@ -530,6 +532,7 @@ void scenes::stream::render(const XrFrameState & frame_state)
 
 	std::array<XrPosef, 2> pose{};
 	std::array<XrFovf, 2> fov{};
+	std::array<xrt::drivers::wivrn::to_headset::foveation_parameter, 2> foveation{};
 	{
 		// Search for frame with desired display time on all decoders
 		// If no such frame exists, use the latest frame for each decoder
@@ -549,6 +552,7 @@ void scenes::stream::render(const XrFrameState & frame_state)
 
 			pose = blit_handle->view_info.pose;
 			fov = blit_handle->view_info.fov;
+			foveation = blit_handle->view_info.foveation;
 
 			vk::DescriptorImageInfo image_info{
 			        .imageView = *blit_handle->image_view,
@@ -649,6 +653,8 @@ void scenes::stream::render(const XrFrameState & frame_state)
 	}
 
 	command_buffer.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, *query_pool, 1);
+
+	reprojector->set_foveation(foveation);
 
 	// Unfoveate the image to the real pose
 	for (size_t view = 0; view < view_count; view++)

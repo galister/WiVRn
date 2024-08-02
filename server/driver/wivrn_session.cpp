@@ -33,6 +33,7 @@
 #include "wivrn_controller.h"
 #include "wivrn_hmd.h"
 
+#include "xrt/xrt_defines.h"
 #include "xrt/xrt_session.h"
 #include <cmath>
 #include <vulkan/vulkan.h>
@@ -208,6 +209,13 @@ void wivrn_session::operator()(from_headset::tracking && tracking)
 	if (not offset)
 		return;
 
+	staged_foveation_center = {
+	        xrt_vec2{tracking.foveation[0].x, tracking.foveation[0].y},
+	        xrt_vec2{tracking.foveation[1].x, tracking.foveation[1].y},
+	};
+
+	U_LOG_E("FovCenter (%.2f, %.2f), (%.2f, %.2f)", staged_foveation_center[0].x, staged_foveation_center[0].y, staged_foveation_center[1].x, staged_foveation_center[1].y);
+
 	hmd->update_tracking(tracking, offset);
 	left_hand->update_tracking(tracking, offset);
 	right_hand->update_tracking(tracking, offset);
@@ -291,9 +299,19 @@ void wivrn_session::run(std::weak_ptr<wivrn_session> weak_self)
 	}
 }
 
-std::array<to_headset::video_stream_description::foveation_parameter, 2> wivrn_session::set_foveated_size(uint32_t width, uint32_t height)
+std::array<to_headset::foveation_parameter, 2> wivrn_session::set_foveated_size(uint32_t width, uint32_t height)
 {
 	return hmd->set_foveated_size(width, height);
+}
+
+void wivrn_session::apply_foveation_center()
+{
+	hmd->set_foveation_center(staged_foveation_center);
+}
+
+std::array<to_headset::foveation_parameter, 2> wivrn_session::get_foveation_parameters()
+{
+	return hmd->get_foveation_parameters();
 }
 
 void wivrn_session::dump_time(const std::string & event, uint64_t frame, uint64_t time, uint8_t stream, const char * extra)

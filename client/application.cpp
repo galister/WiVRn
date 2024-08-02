@@ -250,6 +250,12 @@ static std::vector<interaction_profile> interaction_profiles{
                         "/user/hand/right/input/thumbstick/touch",
                         "/user/hand/right/input/thumbrest/touch",
                 }},
+        interaction_profile{
+                "/user/eyes_ext/input/gaze_ext/pose",
+                {"XR_EXT_eye_gaze_interaction"},
+                {
+                        "/user/eyes_ext/input/gaze_ext/pose",
+                }},
 };
 
 static const std::pair<std::string_view, XrActionType> action_suffixes[] =
@@ -648,6 +654,8 @@ void application::initialize_actions()
 			right_grip_space = xr_session.create_action_space(a);
 		else if (name == "/user/hand/right/input/aim/pose")
 			right_aim_space = xr_session.create_action_space(a);
+		else if (name == "/user/eyes_ext/input/gaze_ext/pose")
+			eye_gaze_space = xr_session.create_action_space(a);
 	}
 
 	// Build an action set for each scene
@@ -795,6 +803,13 @@ void application::initialize()
 		XrSystemEyeTrackingPropertiesFB eye_tracking_properties = xr_system_id.fb_eye_tracking_properties();
 		spdlog::info("    Social eye tracking support: {}", (bool)eye_tracking_properties.supportsEyeTracking);
 		fb_eye_tracking_supported = eye_tracking_properties.supportsEyeTracking;
+	}
+
+	if (utils::contains(xr_extensions, XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME))
+	{
+		XrSystemEyeGazeInteractionPropertiesEXT eye_gaze_properties = xr_system_id.eye_gaze_interaction_properties();
+		spdlog::info("    Eye gaze interaction support: {}", (bool)eye_gaze_properties.supportsEyeGazeInteraction);
+		eye_gaze_supported = eye_gaze_properties.supportsEyeGazeInteraction;
 	}
 
 	switch (xr_system_id.passthrough_supported())

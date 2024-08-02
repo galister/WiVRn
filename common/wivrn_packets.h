@@ -73,6 +73,7 @@ enum class device_id : uint8_t
 	RIGHT_THUMBSTICK_CLICK,  // /user/hand/right/input/thumbstick/click
 	RIGHT_THUMBSTICK_TOUCH,  // /user/hand/right/input/thumbstick/touch
 	RIGHT_THUMBREST_TOUCH,   // /user/hand/right/input/thumbrest/touch
+	EYE_GAZE,                // /user/eyes_ext/input/gaze_ext/pose
 };
 
 enum video_codec
@@ -91,7 +92,6 @@ struct audio_data
 
 namespace from_headset
 {
-
 struct headset_info_packet
 {
 	uint32_t recommended_eye_width;
@@ -222,6 +222,19 @@ using packets = std::variant<headset_info_packet, feedback, audio_data, handshak
 namespace to_headset
 {
 
+struct foveation_parameter_item
+{
+	float center;
+	float scale;
+	float a;
+	float b;
+};
+struct foveation_parameter
+{
+	foveation_parameter_item x;
+	foveation_parameter_item y;
+};
+
 struct handshake
 {
 	// -1 if stream socket should not be used
@@ -254,18 +267,6 @@ struct video_stream_description
 		video_codec codec;
 		std::optional<VkSamplerYcbcrRange> range;
 		std::optional<VkSamplerYcbcrModelConversion> color_model;
-	};
-	struct foveation_parameter_item
-	{
-		double center;
-		double scale;
-		double a;
-		double b;
-	};
-	struct foveation_parameter
-	{
-		foveation_parameter_item x;
-		foveation_parameter_item y;
 	};
 	uint16_t width;
 	uint16_t height;
@@ -300,6 +301,7 @@ public:
 
 		std::array<XrPosef, 2> pose;
 		std::array<XrFovf, 2> fov;
+		std::array<foveation_parameter, 2> foveation;
 	};
 	std::optional<view_info_t> view_info;
 

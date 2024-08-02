@@ -30,6 +30,7 @@
 
 #include "driver/wivrn_pacer.h"
 #include "encoder/encoder_settings.h"
+#include "xrt/xrt_defines.h"
 #include <list>
 #include <memory>
 #include <optional>
@@ -78,6 +79,8 @@ struct wivrn_comp_target : public comp_target
 	pseudo_swapchain psc;
 
 	VkColorSpaceKHR color_space;
+
+	std::array<xrt_vec2, 2> active_foveation_center;
 
 	static std::vector<const char *> wanted_instance_extensions;
 	static std::vector<const char *> wanted_device_extensions;

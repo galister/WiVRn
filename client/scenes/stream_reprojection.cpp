@@ -22,6 +22,7 @@
 #include "vk/allocation.h"
 #include "vk/pipeline.h"
 #include "vk/shader.h"
+#include "wivrn_packets.h"
 #include <array>
 #include <glm/glm.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -428,4 +429,9 @@ void stream_reprojection::reproject(vk::raii::CommandBuffer & command_buffer, in
 	command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *layout, 0, descriptor_sets[source], {});
 	command_buffer.draw(6 * nb_reprojection_vertices * nb_reprojection_vertices, 1, 0, 0);
 	command_buffer.endRenderPass();
+}
+
+void stream_reprojection::set_foveation(std::array<xrt::drivers::wivrn::to_headset::foveation_parameter, 2> foveation)
+{
+	foveation_parameters = foveation;
 }

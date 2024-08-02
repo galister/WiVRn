@@ -251,6 +251,10 @@ static bool comp_wivrn_check_ready(struct comp_target * ct)
 			cn->c->debug.atw_off = false;
 		}
 	}
+
+	// copy foveation params from staging
+	cn->cnx->apply_foveation_center();
+
 	return true;
 }
 
@@ -505,11 +509,14 @@ static VkResult comp_wivrn_present(struct comp_target * ct,
 
 	auto & view_info = cn->psc.images[index].view_info;
 	view_info.display_time = cn->cnx->get_offset().to_headset(desired_present_time_ns);
+
+	view_info.foveation = cn->cnx->get_foveation_parameters();
 	for (int eye = 0; eye < 2; ++eye)
 	{
 		const auto & slot = cn->c->base.slot;
 		view_info.fov[eye] = xrt_cast(slot.fovs[eye]);
 		view_info.pose[eye] = xrt_cast(slot.poses[eye]);
+
 		if (cn->c->debug.atw_off)
 		{
 			const auto & proj = slot.layers[0].data.proj;

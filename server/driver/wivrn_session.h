@@ -22,7 +22,9 @@
 #include "clock_offset.h"
 #include "wivrn_connection.h"
 #include "wivrn_packets.h"
+#include "xrt/xrt_defines.h"
 #include "xrt/xrt_results.h"
+#include <array>
 #include <atomic>
 #include <fstream>
 #include <memory>
@@ -88,6 +90,8 @@ class wivrn_session : public std::enable_shared_from_this<wivrn_session>
 
 	std::shared_ptr<audio_device> audio_handle;
 
+	std::array<xrt_vec2, 2> staged_foveation_center;
+
 	wivrn_session(TCP && tcp, u_system &);
 
 public:
@@ -126,7 +130,9 @@ public:
 		connection.send_control(std::forward<T>(packet));
 	}
 
-	std::array<to_headset::video_stream_description::foveation_parameter, 2> set_foveated_size(uint32_t width, uint32_t height);
+	std::array<to_headset::foveation_parameter, 2> set_foveated_size(uint32_t width, uint32_t height);
+	std::array<to_headset::foveation_parameter, 2> get_foveation_parameters();
+	void apply_foveation_center();
 
 	void dump_time(const std::string & event, uint64_t frame, uint64_t time, uint8_t stream = -1, const char * extra = "");
 

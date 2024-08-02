@@ -86,6 +86,25 @@ XrSystemHandTrackingPropertiesEXT xr::system::hand_tracking_properties() const
 
 	return hand_tracking_prop;
 }
+
+XrSystemEyeGazeInteractionPropertiesEXT xr::system::eye_gaze_interaction_properties() const
+{
+	if (!id)
+		throw std::invalid_argument("this");
+
+	XrSystemEyeGazeInteractionPropertiesEXT eye_gaze_prop{
+	        .type = XR_TYPE_SYSTEM_EYE_GAZE_INTERACTION_PROPERTIES_EXT,
+	};
+
+	XrSystemProperties prop{
+	        .type = XR_TYPE_SYSTEM_PROPERTIES,
+	        .next = &eye_gaze_prop,
+	};
+	CHECK_XR(xrGetSystemProperties(*inst, id, &prop));
+
+	return eye_gaze_prop;
+}
+
 XrSystemFaceTrackingProperties2FB xr::system::fb_face_tracking_properties() const
 {
 	if (!id)
