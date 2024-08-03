@@ -32,10 +32,12 @@
 #include "wivrn_comp_target.h"
 #include "wivrn_controller.h"
 #include "wivrn_eye_tracker.h"
+#include "wivrn_foveation.h"
 #include "wivrn_hmd.h"
 
 #include "xrt/xrt_session.h"
 #include <cmath>
+#include <memory>
 #include <vulkan/vulkan.h>
 
 struct wivrn_comp_target_factory : public comp_target_factory
@@ -160,6 +162,7 @@ xrt_result_t xrt::drivers::wivrn::wivrn_session::create_session(xrt::drivers::wi
 	if (info.eye_gaze)
 	{
 		self->eye_tracker = std::make_unique<wivrn_eye_tracker>(self->hmd.get(), self);
+		self->foveation = std::make_unique<wivrn_foveation>();
 		usysds->base.base.static_roles.eyes = self->eye_tracker.get();
 		devices->xdevs[n++] = self->eye_tracker.get();
 	}
@@ -259,6 +262,8 @@ void wivrn_session::operator()(from_headset::tracking && tracking)
 	right_hand->update_tracking(tracking, offset);
 	if (eye_tracker)
 		eye_tracker->update_tracking(tracking, offset);
+	if (foveation)
+		foveation->update_tracking(tracking, offset);
 }
 
 void wivrn_session::operator()(from_headset::hand_tracking && hand_tracking)
@@ -342,9 +347,25 @@ void wivrn_session::run(std::weak_ptr<wivrn_session> weak_self)
 	}
 }
 
-std::array<to_headset::video_stream_description::foveation_parameter, 2> wivrn_session::set_foveated_size(uint32_t width, uint32_t height)
+std::array<to_headset::foveation_parameter, 2> wivrn_session::set_foveated_size(uint32_t width, uint32_t height)
 {
-	return hmd->set_foveated_size(width, height);
+	auto p = hmd->set_foveated_size(width, height);
+
+	if (foveation)
+		foveation->set_parameters(p);
+
+	return p;
+}
+
+void wivrn_session::apply_dynamic_foveation()
+{
+	if (foveation)
+		hmd->set_foveation_center(foveation->get_center_uv());
+}
+
+std::array<to_headset::foveation_parameter, 2> wivrn_session::get_foveation_parameters()
+{
+	return hmd->get_foveation_parameters();
 }
 
 void wivrn_session::dump_time(const std::string & event, uint64_t frame, uint64_t time, uint8_t stream, const char * extra)

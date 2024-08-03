@@ -389,6 +389,28 @@ xrt_result_t wivrn_hmd::get_face_tracking(enum xrt_input_name facial_expression_
 	return XRT_ERROR_NOT_IMPLEMENTED;
 }
 
+void wivrn_hmd::set_foveation_center(std::array<xrt_vec2, 2> center)
+{
+	for (int i = 0; i < 2; ++i)
+	{
+		foveation_parameters[i].x.center = center[i].x;
+		foveation_parameters[i].y.center = center[i].y;
+
+		if (foveation_parameters[i].x.scale < 1)
+		{
+			std::tie(foveation_parameters[i].x.a, foveation_parameters[i].x.b) =
+			        solve_foveation(foveation_parameters[i].x.scale, foveation_parameters[i].x.center);
+		}
+		if (foveation_parameters[i].y.scale < 1)
+		{
+			std::tie(foveation_parameters[i].y.a, foveation_parameters[i].y.b) =
+			        solve_foveation(foveation_parameters[i].y.scale, foveation_parameters[i].y.center);
+		}
+	}
+	// we're using compute compositor
+	// u_distortion_mesh_fill_in_compute(this);
+}
+
 /*
  *
  * Functions

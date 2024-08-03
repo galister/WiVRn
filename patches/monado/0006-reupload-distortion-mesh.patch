@@ -1,0 +1,380 @@
+diff --git a/src/xrt/auxiliary/util/u_distortion_mesh.c b/src/xrt/auxiliary/util/u_distortion_mesh.c
+index 30733376a..29e34ba0e 100644
+--- a/src/xrt/auxiliary/util/u_distortion_mesh.c
++++ b/src/xrt/auxiliary/util/u_distortion_mesh.c
+@@ -111,6 +111,12 @@ run_func(struct xrt_device *xdev, func_calc calc, struct xrt_hmd_parts *target,
+ 		}
+ 	}
+ 
++	if (target->distortion.mesh.vertices != NULL)
++		free(target->distortion.mesh.vertices);
++
++	if (target->distortion.mesh.indices != NULL)
++		free(target->distortion.mesh.indices);
++
+ 	target->distortion.models |= XRT_DISTORTION_MODEL_MESHUV;
+ 	target->distortion.mesh.vertices = verts;
+ 	target->distortion.mesh.stride = stride_in_floats * sizeof(float);
+diff --git a/src/xrt/compositor/main/comp_renderer.c b/src/xrt/compositor/main/comp_renderer.c
+index 4716c8a71..b848fb71c 100644
+--- a/src/xrt/compositor/main/comp_renderer.c
++++ b/src/xrt/compositor/main/comp_renderer.c
+@@ -475,7 +475,7 @@ renderer_close_renderings_and_fences(struct comp_renderer *r)
+  * @ingroup comp_main
+  */
+ static bool
+-renderer_ensure_images_and_renderings(struct comp_renderer *r, bool force_recreate)
++renderer_ensure_images_and_renderings(struct comp_renderer *r, bool force_recreate, bool distortion_changed)
+ {
+ 	struct comp_compositor *c = r->c;
+ 	struct comp_target *target = c->target;
+@@ -485,9 +485,18 @@ renderer_ensure_images_and_renderings(struct comp_renderer *r, bool force_recrea
+ 		return false;
+ 	}
+ 
++	bool pre_rotate = false;
++	if (c->target->surface_transform & VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ||
++	    c->target->surface_transform & VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) {
++		pre_rotate = true;
++	}
++
+ 	// We will create images if we don't have any images or if we were told to recreate them.
+ 	bool create = force_recreate || !comp_target_has_images(target) || (r->buffer_count == 0);
+ 	if (!create) {
++		if (!render_distortion_images_ensure(&r->c->nr, &r->c->base.vk, r->c->xdev, pre_rotate,
++		                                     distortion_changed))
++			return false;
+ 		return true;
+ 	}
+ 
+@@ -533,14 +542,8 @@ renderer_ensure_images_and_renderings(struct comp_renderer *r, bool force_recrea
+ 
+ 	comp_target_create_images(r->c->target, &info);
+ 
+-	bool pre_rotate = false;
+-	if (r->c->target->surface_transform & VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ||
+-	    r->c->target->surface_transform & VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) {
+-		pre_rotate = true;
+-	}
+-
+ 	// @todo: is it safe to fail here?
+-	if (!render_distortion_images_ensure(&r->c->nr, &r->c->base.vk, r->c->xdev, pre_rotate))
++	if (!render_distortion_images_ensure(&r->c->nr, &r->c->base.vk, r->c->xdev, pre_rotate, distortion_changed))
+ 		return false;
+ 
+ 	r->buffer_count = r->c->target->image_count;
+@@ -594,7 +597,7 @@ renderer_init(struct comp_renderer *r, struct comp_compositor *c, VkExtent2D scr
+ 	}
+ 
+ 	// Try to early-allocate these, in case we can.
+-	renderer_ensure_images_and_renderings(r, false);
++	renderer_ensure_images_and_renderings(r, false, false);
+ 
+ 	struct vk_bundle *vk = &r->c->base.vk;
+ 
+@@ -742,7 +745,7 @@ renderer_acquire_swapchain_image(struct comp_renderer *r)
+ 
+ 	assert(r->acquired_buffer < 0);
+ 
+-	if (!renderer_ensure_images_and_renderings(r, false)) {
++	if (!renderer_ensure_images_and_renderings(r, false, true)) {
+ 		// Not ready yet.
+ 		return;
+ 	}
+@@ -751,7 +754,7 @@ renderer_acquire_swapchain_image(struct comp_renderer *r)
+ 	if ((ret == VK_ERROR_OUT_OF_DATE_KHR) || (ret == VK_SUBOPTIMAL_KHR)) {
+ 		COMP_DEBUG(r->c, "Received %s.", vk_result_string(ret));
+ 
+-		if (!renderer_ensure_images_and_renderings(r, true)) {
++		if (!renderer_ensure_images_and_renderings(r, true, true)) {
+ 			// Failed on force recreate.
+ 			COMP_ERROR(r->c,
+ 			           "renderer_acquire_swapchain_image: comp_target_acquire was out of date, force "
+@@ -781,7 +784,7 @@ renderer_resize(struct comp_renderer *r)
+ 		return;
+ 	}
+ 	// Force recreate.
+-	renderer_ensure_images_and_renderings(r, true);
++	renderer_ensure_images_and_renderings(r, true, true);
+ }
+ 
+ static void
+diff --git a/src/xrt/compositor/render/render_distortion.c b/src/xrt/compositor/render/render_distortion.c
+index 031f74ad5..112a3d57f 100644
+--- a/src/xrt/compositor/render/render_distortion.c
++++ b/src/xrt/compositor/render/render_distortion.c
+@@ -7,6 +7,7 @@
+  * @ingroup comp_render
+  */
+ 
++#include "vk/vk_helpers.h"
+ #include "xrt/xrt_device.h"
+ 
+ #include "math/m_api.h"
+@@ -16,6 +17,7 @@
+ #include "vk/vk_mini_helpers.h"
+ 
+ #include "render/render_interface.h"
++#include <vulkan/vulkan_core.h>
+ 
+ 
+ /*
+@@ -191,18 +193,14 @@ struct tan_angles_transforms
+ };
+ 
+ XRT_CHECK_RESULT static VkResult
+-create_and_fill_in_distortion_buffer_for_view(struct vk_bundle *vk,
+-                                              struct xrt_device *xdev,
+-                                              struct render_buffer *r_buffer,
+-                                              struct render_buffer *g_buffer,
+-                                              struct render_buffer *b_buffer,
+-                                              uint32_t view,
+-                                              bool pre_rotate)
++update_distortion_buffer_for_view(struct vk_bundle *vk,
++                                  struct xrt_device *xdev,
++                                  struct render_buffer *r_buffer,
++                                  struct render_buffer *g_buffer,
++                                  struct render_buffer *b_buffer,
++                                  uint32_t view,
++                                  bool pre_rotate)
+ {
+-	VkBufferUsageFlags usage_flags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+-	VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+-	VkResult ret;
+-
+ 	struct xrt_matrix_2x2 rot = xdev->hmd->views[view].rot;
+ 
+ 	const struct xrt_matrix_2x2 rotation_90_cw = {{
+@@ -217,18 +215,7 @@ create_and_fill_in_distortion_buffer_for_view(struct vk_bundle *vk,
+ 		m_mat2x2_multiply(&rot, &rotation_90_cw, &rot);
+ 	}
+ 
+-	VkDeviceSize size = sizeof(struct texture);
+-
+-	ret = render_buffer_init(vk, r_buffer, usage_flags, properties, size);
+-	VK_CHK_WITH_GOTO(ret, "render_buffer_init", err_buffers);
+-	VK_NAME_BUFFER(vk, r_buffer->buffer, "distortion r_buffer");
+-	ret = render_buffer_init(vk, g_buffer, usage_flags, properties, size);
+-	VK_CHK_WITH_GOTO(ret, "render_buffer_init", err_buffers);
+-	VK_NAME_BUFFER(vk, g_buffer->buffer, "distortion g_buffer");
+-	ret = render_buffer_init(vk, b_buffer, usage_flags, properties, size);
+-	VK_CHK_WITH_GOTO(ret, "render_buffer_init", err_buffers);
+-	VK_NAME_BUFFER(vk, b_buffer->buffer, "distortion b_buffer");
+-
++	VkResult ret;
+ 	ret = render_buffer_map(vk, r_buffer);
+ 	VK_CHK_WITH_GOTO(ret, "render_buffer_map", err_buffers);
+ 	ret = render_buffer_map(vk, g_buffer);
+@@ -269,6 +256,38 @@ create_and_fill_in_distortion_buffer_for_view(struct vk_bundle *vk,
+ 	render_buffer_unmap(vk, g_buffer);
+ 	render_buffer_unmap(vk, b_buffer);
+ 
++err_buffers:
++	return ret;
++}
++
++XRT_CHECK_RESULT static VkResult
++create_and_fill_in_distortion_buffer_for_view(struct vk_bundle *vk,
++                                              struct xrt_device *xdev,
++                                              struct render_buffer *r_buffer,
++                                              struct render_buffer *g_buffer,
++                                              struct render_buffer *b_buffer,
++                                              uint32_t view,
++                                              bool pre_rotate)
++{
++	VkBufferUsageFlags usage_flags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
++	VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
++	VkResult ret;
++
++	VkDeviceSize size = sizeof(struct texture);
++
++	ret = render_buffer_init(vk, r_buffer, usage_flags, properties, size);
++	VK_CHK_WITH_GOTO(ret, "render_buffer_init", err_buffers);
++	VK_NAME_BUFFER(vk, r_buffer->buffer, "distortion r_buffer");
++	ret = render_buffer_init(vk, g_buffer, usage_flags, properties, size);
++	VK_CHK_WITH_GOTO(ret, "render_buffer_init", err_buffers);
++	VK_NAME_BUFFER(vk, g_buffer->buffer, "distortion g_buffer");
++	ret = render_buffer_init(vk, b_buffer, usage_flags, properties, size);
++	VK_CHK_WITH_GOTO(ret, "render_buffer_init", err_buffers);
++	VK_NAME_BUFFER(vk, b_buffer->buffer, "distortion b_buffer");
++
++	ret = update_distortion_buffer_for_view(vk, xdev, r_buffer, g_buffer, b_buffer, view, pre_rotate);
++	VK_CHK_WITH_GOTO(ret, "update_distortion_buffer_for_view", err_buffers);
++
+ 	return VK_SUCCESS;
+ 
+ err_buffers:
+@@ -351,15 +370,7 @@ render_distortion_buffer_init(struct render_resources *r,
+ 		r->distortion.device_memories[i] = device_memories[i];
+ 		r->distortion.images[i] = images[i];
+ 		r->distortion.image_views[i] = image_views[i];
+-	}
+-
+-
+-	/*
+-	 * Tidy
+-	 */
+-
+-	for (uint32_t i = 0; i < RENDER_DISTORTION_IMAGES_COUNT; i++) {
+-		render_buffer_close(vk, &bufs[i]);
++		r->distortion.image_buffers[i] = bufs[i];
+ 	}
+ 
+ 	return true;
+@@ -382,6 +393,57 @@ err_resources:
+ 	return false;
+ }
+ 
++static bool
++render_distortion_buffer_reupload(struct render_resources *r, struct vk_bundle *vk, struct xrt_device *xdev)
++{
++	VkResult ret;
++	VkCommandBuffer upload_buffer = VK_NULL_HANDLE;
++
++	for (uint32_t i = 0; i < r->view_count; ++i) {
++		struct render_buffer *r_buffer = &r->distortion.image_buffers[i];
++		struct render_buffer *g_buffer = &r->distortion.image_buffers[r->view_count + i];
++		struct render_buffer *b_buffer = &r->distortion.image_buffers[2 * r->view_count + i];
++
++		ret = update_distortion_buffer_for_view(vk, xdev, r_buffer, g_buffer, b_buffer, i,
++		                                        r->distortion.pre_rotated);
++		VK_CHK_WITH_RET(ret, "render_distortion_buffer_update_only", false);
++	}
++
++
++	struct vk_cmd_pool *pool = &r->distortion_pool;
++
++	vk_cmd_pool_lock(pool);
++
++	ret = vk_cmd_pool_create_and_begin_cmd_buffer_locked(vk, pool, 0, &upload_buffer);
++	VK_CHK_WITH_GOTO(ret, "vk_cmd_pool_create_and_begin_cmd_buffer_locked", err_unlock);
++	VK_NAME_COMMAND_BUFFER(vk, upload_buffer, "render_resources distortion command buffer");
++
++	VkExtent2D extent = {RENDER_DISTORTION_IMAGE_DIMENSIONS, RENDER_DISTORTION_IMAGE_DIMENSIONS};
++
++	for (uint32_t i = 0; i < RENDER_DISTORTION_IMAGES_COUNT; i++) {
++
++		queue_upload_for_first_level_and_layer_locked(vk,                                    //
++		                                              upload_buffer,                         //
++		                                              r->distortion.image_buffers[i].buffer, //
++		                                              r->distortion.images[i],               //
++		                                              extent);                               //
++	}
++
++	ret = vk_cmd_pool_end_submit_wait_and_free_cmd_buffer_locked(vk, pool, upload_buffer);
++	VK_CHK_WITH_GOTO(ret, "vk_cmd_pool_end_submit_wait_and_free_cmd_buffer_locked", err_cmd);
++
++	vk_cmd_pool_unlock(pool);
++
++	return true;
++
++err_cmd:
++	vk->vkFreeCommandBuffers(vk->device, pool->pool, 1, &upload_buffer);
++
++err_unlock:
++	vk_cmd_pool_unlock(pool);
++
++	return false;
++}
+ 
+ /*
+  *
+@@ -398,18 +460,19 @@ render_distortion_images_close(struct render_resources *r)
+ 		D(ImageView, r->distortion.image_views[i]);
+ 		D(Image, r->distortion.images[i]);
+ 		DF(Memory, r->distortion.device_memories[i]);
++		render_buffer_close(vk, &r->distortion.image_buffers[i]);
+ 	}
+ }
+ 
+ bool
+-render_distortion_images_ensure(struct render_resources *r,
+-                                struct vk_bundle *vk,
+-                                struct xrt_device *xdev,
+-                                bool pre_rotate)
++render_distortion_images_ensure(
++    struct render_resources *r, struct vk_bundle *vk, struct xrt_device *xdev, bool pre_rotate, bool reupload)
+ {
+ 	if (r->distortion.image_views[0] == VK_NULL_HANDLE || pre_rotate != r->distortion.pre_rotated) {
+ 		render_distortion_images_close(r);
+ 		return render_distortion_buffer_init(r, vk, xdev, pre_rotate);
++	} else if (reupload) {
++		render_distortion_buffer_reupload(r, vk, xdev);
+ 	}
+ 
+ 	return true;
+diff --git a/src/xrt/compositor/render/render_interface.h b/src/xrt/compositor/render/render_interface.h
+index f1a7a941a..9ea11b69a 100644
+--- a/src/xrt/compositor/render/render_interface.h
++++ b/src/xrt/compositor/render/render_interface.h
+@@ -551,6 +551,9 @@ struct render_resources
+ 		//! The views into the distortion images.
+ 		VkImageView image_views[RENDER_DISTORTION_IMAGES_SIZE];
+ 
++		//! The buffers for the distortion images.
++		struct render_buffer image_buffers[RENDER_DISTORTION_IMAGES_SIZE];
++
+ 		//! Whether distortion images have been pre-rotated 90 degrees.
+ 		bool pre_rotated;
+ 	} distortion;
+@@ -569,6 +572,17 @@ render_resources_init(struct render_resources *r,
+                       struct vk_bundle *vk,
+                       struct xrt_device *xdev);
+ 
++/*!
++ * Reuploads vertex and index buffers.
++ * Assumes that the number of vertices and indexes does not change.
++ *
++ * @ingroup comp_main
++ *
++ * @public @memberof render_resources
++ */
++bool
++reupload_mesh_buffers(struct render_resources *r, struct vk_bundle *vk, struct xrt_device *xdev);
++
+ /*!
+  * Free all pools and static resources, does not free the struct itself.
+  *
+@@ -581,10 +595,8 @@ render_resources_close(struct render_resources *r);
+  * Creates or recreates the compute distortion textures if necessary.
+  */
+ bool
+-render_distortion_images_ensure(struct render_resources *r,
+-                                struct vk_bundle *vk,
+-                                struct xrt_device *xdev,
+-                                bool pre_rotate);
++render_distortion_images_ensure(
++    struct render_resources *r, struct vk_bundle *vk, struct xrt_device *xdev, bool pre_rotate, bool reupload);
+ 
+ /*!
+  * Free distortion images.
+diff --git a/src/xrt/compositor/render/render_resources.c b/src/xrt/compositor/render/render_resources.c
+index 959685794..32a02e09a 100644
+--- a/src/xrt/compositor/render/render_resources.c
++++ b/src/xrt/compositor/render/render_resources.c
+@@ -499,6 +499,25 @@ teardown_scratch_color_image(struct vk_bundle *vk, struct render_scratch_color_i
+ }
+ 
+ 
++bool
++reupload_mesh_buffers(struct render_resources *r, struct vk_bundle *vk, struct xrt_device *xdev)
++{
++	struct xrt_hmd_parts *hmd = xdev->hmd;
++
++	VkDeviceSize vbo_size = r->mesh.stride * r->mesh.vertex_count;
++	VkDeviceSize ibo_size = sizeof(int) * r->mesh.index_count_total;
++
++	VkResult ret;
++	ret = render_buffer_write(vk, &r->mesh.vbo, hmd->distortion.mesh.vertices, vbo_size);
++	VK_CHK_WITH_RET(ret, "render_buffer_write", false);
++
++	ret = render_buffer_write(vk, &r->mesh.ibo, hmd->distortion.mesh.indices, ibo_size);
++	VK_CHK_WITH_RET(ret, "render_buffer_write", false);
++
++	return true;
++}
++
++
+ /*
+  *
+  * 'Exported' renderer functions.
