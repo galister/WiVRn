@@ -1,0 +1,845 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 298604442..067ad34a9 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -353,6 +353,7 @@ option(XRT_FEATURE_OPENXR_PERFORMANCE_SETTINGS "Enable XR_EXT_performance_settin
+ option(XRT_FEATURE_OPENXR_VULKAN_SWAPCHAIN_FORMAT_LIST "Enable XR_KHR_vulkan_swapchain_format_list" ON)
+ option(XRT_FEATURE_OPENXR_FACIAL_TRACKING_HTC "Enable XR_HTC_facial_tracking" OFF)
+ option(XRT_FEATURE_OPENXR_BODY_TRACKING_FB "Enable XR_FB_body_tracking" OFF)
++option(XRT_FEATURE_OPENXR_FACE_TRACKING2_FB "Enable XR_FB_face_tracking2" OFF)
+ option(XRT_FEATURE_OPENXR_XDEV_SPACE "Enable XR_MNDX_xdev_space" ON)
+ 
+ # Interaction extension support.
+@@ -578,6 +579,7 @@ message(STATUS "#    FEATURE_COLOR_LOG:                            ${XRT_FEATURE
+ message(STATUS "#    FEATURE_DEBUG_GUI:                            ${XRT_FEATURE_DEBUG_GUI}")
+ message(STATUS "#    FEATURE_OPENXR:                               ${XRT_FEATURE_OPENXR}")
+ message(STATUS "#    FEATURE_OPENXR_BODY_TRACKING_FB:              ${XRT_FEATURE_OPENXR_BODY_TRACKING_FB}")
++message(STATUS "#    FEATURE_OPENXR_FACE_TRACKING2_FB:             ${XRT_FEATURE_OPENXR_FACE_TRACKING2_FB}")
+ message(STATUS "#    FEATURE_OPENXR_DEBUG_UTILS:                   ${XRT_FEATURE_OPENXR_DEBUG_UTILS}")
+ message(STATUS "#    FEATURE_OPENXR_DISPLAY_REFRESH_RATE:          ${XRT_FEATURE_OPENXR_DISPLAY_REFRESH_RATE}")
+ message(STATUS "#    FEATURE_OPENXR_FACIAL_TRACKING_HTC:           ${XRT_FEATURE_OPENXR_FACIAL_TRACKING_HTC}")
+diff --git a/scripts/generate_oxr_ext_support.py b/scripts/generate_oxr_ext_support.py
+index 6f1e7f17b..ed08d7824 100755
+--- a/scripts/generate_oxr_ext_support.py
++++ b/scripts/generate_oxr_ext_support.py
+@@ -73,6 +73,7 @@ EXTENSIONS = (
+     ['XR_FB_composition_layer_image_layout', 'XRT_FEATURE_OPENXR_LAYER_FB_IMAGE_LAYOUT'],
+     ['XR_FB_composition_layer_settings', 'XRT_FEATURE_OPENXR_LAYER_FB_SETTINGS'],
+     ['XR_FB_composition_layer_depth_test', 'XRT_FEATURE_OPENXR_LAYER_FB_DEPTH_TEST'],
++    ['XR_FB_face_tracking2', 'XRT_FEATURE_OPENXR_FACE_TRACKING2_FB'],
+     ['XR_FB_display_refresh_rate', 'XRT_FEATURE_OPENXR_DISPLAY_REFRESH_RATE'],
+     ['XR_FB_passthrough', 'XRT_FEATURE_OPENXR_LAYER_PASSTHROUGH'],
+     ['XR_FB_touch_controller_pro', 'XRT_FEATURE_OPENXR_INTERACTION_TOUCH_PRO'],
+diff --git a/scripts/mapping.imp b/scripts/mapping.imp
+index 7a7d1e4bd..687aa8af7 100644
+--- a/scripts/mapping.imp
++++ b/scripts/mapping.imp
+@@ -36,6 +36,7 @@
+ { symbol: ["XRT_FEATURE_OPENXR_DEBUG_UTILS", "public", "\"xrt/xrt_config_build.h\"", "public"] },
+ { symbol: ["XRT_FEATURE_OPENXR_DISPLAY_REFRESH_RATE", "public", "\"xrt/xrt_config_build.h\"", "public"] },
+ { symbol: ["XRT_FEATURE_OPENXR_FORCE_FEEDBACK_CURL", "public", "\"xrt/xrt_config_build.h\"", "public"] },
++{ symbol: ["XRT_FEATURE_OPENXR_FACE_TRACKING2_FB", "public", "\"xrt/xrt_config_build.h\"", "public"] },
+ { symbol: ["XRT_FEATURE_OPENXR_FACIAL_TRACKING_HTC", "public", "\"xrt/xrt_config_build.h\"", "public"] },
+ { symbol: ["XRT_FEATURE_OPENXR_HEADLESS", "public", "\"xrt/xrt_config_build.h\"", "public"] },
+ { symbol: ["XRT_FEATURE_OPENXR_INTERACTION_EXT_EYE_GAZE", "public", "\"xrt/xrt_config_build.h\"", "public"] },
+diff --git a/src/xrt/compositor/multi/comp_multi_system.c b/src/xrt/compositor/multi/comp_multi_system.c
+index bb874118c..58b65c47b 100644
+--- a/src/xrt/compositor/multi/comp_multi_system.c
++++ b/src/xrt/compositor/multi/comp_multi_system.c
+@@ -418,6 +418,7 @@ update_session_state_locked(struct multi_system_compositor *msc)
+ 	    .ext_hand_interaction_enabled = false,
+ 	    .htc_facial_tracking_enabled = false,
+ 	    .fb_body_tracking_enabled = false,
++	    .fb_face_tracking2_enabled = false,
+ 	};
+ 
+ 	switch (msc->sessions.state) {
+diff --git a/src/xrt/include/xrt/xrt_compositor.h b/src/xrt/include/xrt/xrt_compositor.h
+index f7505eeeb..34be0b1af 100644
+--- a/src/xrt/include/xrt/xrt_compositor.h
++++ b/src/xrt/include/xrt/xrt_compositor.h
+@@ -962,6 +962,7 @@ struct xrt_begin_session_info
+ 	bool ext_hand_interaction_enabled;
+ 	bool htc_facial_tracking_enabled;
+ 	bool fb_body_tracking_enabled;
++	bool fb_face_tracking2_enabled;
+ };
+ 
+ /*!
+diff --git a/src/xrt/include/xrt/xrt_config_build.h.cmake_in b/src/xrt/include/xrt/xrt_config_build.h.cmake_in
+index 4dc18fc69..b292ae3ef 100644
+--- a/src/xrt/include/xrt/xrt_config_build.h.cmake_in
++++ b/src/xrt/include/xrt/xrt_config_build.h.cmake_in
+@@ -33,6 +33,7 @@
+ #cmakedefine XRT_FEATURE_OPENXR_DEBUG_UTILS
+ #cmakedefine XRT_FEATURE_OPENXR_DISPLAY_REFRESH_RATE
+ #cmakedefine XRT_FEATURE_OPENXR_FORCE_FEEDBACK_CURL
++#cmakedefine XRT_FEATURE_OPENXR_FACE_TRACKING2_FB
+ #cmakedefine XRT_FEATURE_OPENXR_FACIAL_TRACKING_HTC
+ #cmakedefine XRT_FEATURE_OPENXR_HEADLESS
+ #cmakedefine XRT_FEATURE_OPENXR_INTERACTION_EXT_EYE_GAZE
+diff --git a/src/xrt/include/xrt/xrt_defines.h b/src/xrt/include/xrt/xrt_defines.h
+index c546775ef..a72639f69 100644
+--- a/src/xrt/include/xrt/xrt_defines.h
++++ b/src/xrt/include/xrt/xrt_defines.h
+@@ -759,6 +759,9 @@ enum xrt_device_name
+ 	//! XR_FB_body_tracking
+ 	XRT_DEVICE_FB_BODY_TRACKING,
+ 
++	//! XR_FB_face_tracking2
++	XRT_DEVICE_FB_FACE_TRACKING2,
++
+ 	// added in OpenXR 1.1
+ 	XRT_DEVICE_PICO_NEO3_CONTROLLER,
+ 	XRT_DEVICE_PICO4_CONTROLLER,
+@@ -1138,6 +1141,8 @@ enum xrt_input_type
+ \
+ 	_(XRT_INPUT_HTC_EYE_FACE_TRACKING                  , XRT_INPUT_NAME(0x0601, FACE_TRACKING)) \
+ 	_(XRT_INPUT_HTC_LIP_FACE_TRACKING                  , XRT_INPUT_NAME(0x0602, FACE_TRACKING)) \
++	_(XRT_INPUT_FB_FACE_TRACKING2_AUDIO                , XRT_INPUT_NAME(0x0603, FACE_TRACKING)) \
++	_(XRT_INPUT_FB_FACE_TRACKING2_VISUAL               , XRT_INPUT_NAME(0x0604, FACE_TRACKING)) \
+ \
+ 	_(XRT_INPUT_GENERIC_BODY_TRACKING                  , XRT_INPUT_NAME(0x0700, BODY_TRACKING)) \
+ 	_(XRT_INPUT_FB_BODY_TRACKING                       , XRT_INPUT_NAME(0x0701, BODY_TRACKING)) \
+@@ -1442,6 +1447,107 @@ enum xrt_output_type
+ 
+ #define XRT_OUTPUT_NAME(id, type) ((UINT32_C(id) << XRT_OUTPUT_TYPE_BITWIDTH) | (uint32_t)XRT_OUTPUT_TYPE_##type)
+ 
++// XR_FB_face_tracking2
++enum xrt_face_expression2_fb
++{
++	XRT_FACE_EXPRESSION2_BROW_LOWERER_L_FB = 0,
++	XRT_FACE_EXPRESSION2_BROW_LOWERER_R_FB = 1,
++	XRT_FACE_EXPRESSION2_CHEEK_PUFF_L_FB = 2,
++	XRT_FACE_EXPRESSION2_CHEEK_PUFF_R_FB = 3,
++	XRT_FACE_EXPRESSION2_CHEEK_RAISER_L_FB = 4,
++	XRT_FACE_EXPRESSION2_CHEEK_RAISER_R_FB = 5,
++	XRT_FACE_EXPRESSION2_CHEEK_SUCK_L_FB = 6,
++	XRT_FACE_EXPRESSION2_CHEEK_SUCK_R_FB = 7,
++	XRT_FACE_EXPRESSION2_CHIN_RAISER_B_FB = 8,
++	XRT_FACE_EXPRESSION2_CHIN_RAISER_T_FB = 9,
++	XRT_FACE_EXPRESSION2_DIMPLER_L_FB = 10,
++	XRT_FACE_EXPRESSION2_DIMPLER_R_FB = 11,
++	XRT_FACE_EXPRESSION2_EYES_CLOSED_L_FB = 12,
++	XRT_FACE_EXPRESSION2_EYES_CLOSED_R_FB = 13,
++	XRT_FACE_EXPRESSION2_EYES_LOOK_DOWN_L_FB = 14,
++	XRT_FACE_EXPRESSION2_EYES_LOOK_DOWN_R_FB = 15,
++	XRT_FACE_EXPRESSION2_EYES_LOOK_LEFT_L_FB = 16,
++	XRT_FACE_EXPRESSION2_EYES_LOOK_LEFT_R_FB = 17,
++	XRT_FACE_EXPRESSION2_EYES_LOOK_RIGHT_L_FB = 18,
++	XRT_FACE_EXPRESSION2_EYES_LOOK_RIGHT_R_FB = 19,
++	XRT_FACE_EXPRESSION2_EYES_LOOK_UP_L_FB = 20,
++	XRT_FACE_EXPRESSION2_EYES_LOOK_UP_R_FB = 21,
++	XRT_FACE_EXPRESSION2_INNER_BROW_RAISER_L_FB = 22,
++	XRT_FACE_EXPRESSION2_INNER_BROW_RAISER_R_FB = 23,
++	XRT_FACE_EXPRESSION2_JAW_DROP_FB = 24,
++	XRT_FACE_EXPRESSION2_JAW_SIDEWAYS_LEFT_FB = 25,
++	XRT_FACE_EXPRESSION2_JAW_SIDEWAYS_RIGHT_FB = 26,
++	XRT_FACE_EXPRESSION2_JAW_THRUST_FB = 27,
++	XRT_FACE_EXPRESSION2_LID_TIGHTENER_L_FB = 28,
++	XRT_FACE_EXPRESSION2_LID_TIGHTENER_R_FB = 29,
++	XRT_FACE_EXPRESSION2_LIP_CORNER_DEPRESSOR_L_FB = 30,
++	XRT_FACE_EXPRESSION2_LIP_CORNER_DEPRESSOR_R_FB = 31,
++	XRT_FACE_EXPRESSION2_LIP_CORNER_PULLER_L_FB = 32,
++	XRT_FACE_EXPRESSION2_LIP_CORNER_PULLER_R_FB = 33,
++	XRT_FACE_EXPRESSION2_LIP_FUNNELER_LB_FB = 34,
++	XRT_FACE_EXPRESSION2_LIP_FUNNELER_LT_FB = 35,
++	XRT_FACE_EXPRESSION2_LIP_FUNNELER_RB_FB = 36,
++	XRT_FACE_EXPRESSION2_LIP_FUNNELER_RT_FB = 37,
++	XRT_FACE_EXPRESSION2_LIP_PRESSOR_L_FB = 38,
++	XRT_FACE_EXPRESSION2_LIP_PRESSOR_R_FB = 39,
++	XRT_FACE_EXPRESSION2_LIP_PUCKER_L_FB = 40,
++	XRT_FACE_EXPRESSION2_LIP_PUCKER_R_FB = 41,
++	XRT_FACE_EXPRESSION2_LIP_STRETCHER_L_FB = 42,
++	XRT_FACE_EXPRESSION2_LIP_STRETCHER_R_FB = 43,
++	XRT_FACE_EXPRESSION2_LIP_SUCK_LB_FB = 44,
++	XRT_FACE_EXPRESSION2_LIP_SUCK_LT_FB = 45,
++	XRT_FACE_EXPRESSION2_LIP_SUCK_RB_FB = 46,
++	XRT_FACE_EXPRESSION2_LIP_SUCK_RT_FB = 47,
++	XRT_FACE_EXPRESSION2_LIP_TIGHTENER_L_FB = 48,
++	XRT_FACE_EXPRESSION2_LIP_TIGHTENER_R_FB = 49,
++	XRT_FACE_EXPRESSION2_LIPS_TOWARD_FB = 50,
++	XRT_FACE_EXPRESSION2_LOWER_LIP_DEPRESSOR_L_FB = 51,
++	XRT_FACE_EXPRESSION2_LOWER_LIP_DEPRESSOR_R_FB = 52,
++	XRT_FACE_EXPRESSION2_MOUTH_LEFT_FB = 53,
++	XRT_FACE_EXPRESSION2_MOUTH_RIGHT_FB = 54,
++	XRT_FACE_EXPRESSION2_NOSE_WRINKLER_L_FB = 55,
++	XRT_FACE_EXPRESSION2_NOSE_WRINKLER_R_FB = 56,
++	XRT_FACE_EXPRESSION2_OUTER_BROW_RAISER_L_FB = 57,
++	XRT_FACE_EXPRESSION2_OUTER_BROW_RAISER_R_FB = 58,
++	XRT_FACE_EXPRESSION2_UPPER_LID_RAISER_L_FB = 59,
++	XRT_FACE_EXPRESSION2_UPPER_LID_RAISER_R_FB = 60,
++	XRT_FACE_EXPRESSION2_UPPER_LIP_RAISER_L_FB = 61,
++	XRT_FACE_EXPRESSION2_UPPER_LIP_RAISER_R_FB = 62,
++	XRT_FACE_EXPRESSION2_TONGUE_TIP_INTERDENTAL_FB = 63,
++	XRT_FACE_EXPRESSION2_TONGUE_TIP_ALVEOLAR_FB = 64,
++	XRT_FACE_EXPRESSION2_TONGUE_FRONT_DORSAL_PALATE_FB = 65,
++	XRT_FACE_EXPRESSION2_TONGUE_MID_DORSAL_PALATE_FB = 66,
++	XRT_FACE_EXPRESSION2_TONGUE_BACK_DORSAL_VELAR_FB = 67,
++	XRT_FACE_EXPRESSION2_TONGUE_OUT_FB = 68,
++	XRT_FACE_EXPRESSION2_TONGUE_RETREAT_FB = 69,
++	XRT_FACE_EXPRESSION2_COUNT_FB = 70,
++	XRT_FACE_EXPRESSION_2FB_MAX_ENUM_FB = 0x7FFFFFFF
++};
++
++// XR_FB_face_tracking2
++enum xrt_face_confidence2_fb
++{
++	XRT_FACE_CONFIDENCE2_LOWER_FACE_FB = 0,
++	XRT_FACE_CONFIDENCE2_UPPER_FACE_FB = 1,
++	XRT_FACE_CONFIDENCE2_COUNT_FB = 2,
++	XRT_FACE_CONFIDENCE_2FB_MAX_ENUM_FB = 0x7FFFFFFF
++};
++
++// XR_FB_face_tracking2
++enum xrt_face_expression_set2_fb
++{
++	XRT_FACE_EXPRESSION_SET2_DEFAULT_FB = 0,
++	XRT_FACE_EXPRESSION_SET_2FB_MAX_ENUM_FB = 0x7FFFFFFF
++};
++
++// XR_FB_face_tracking2
++enum xrt_face_tracking_data_source2_fb
++{
++	XRT_FACE_TRACKING_DATA_SOURCE2_VISUAL_FB = 0,
++	XRT_FACE_TRACKING_DATA_SOURCE2_AUDIO_FB = 1,
++	XRT_FACE_TRACKING_DATA_SOURCE_2FB_MAX_ENUM_FB = 0x7FFFFFFF
++};
++
+ enum xrt_eye_expression_htc
+ {
+ 	XRT_EYE_EXPRESSION_LEFT_BLINK_HTC = 0,
+@@ -1530,12 +1636,25 @@ struct xrt_facial_lip_expression_set_htc
+ 	float expression_weights[XRT_FACIAL_EXPRESSION_LIP_COUNT_HTC];
+ };
+ 
++struct xrt_facial_expression_set2_fb
++{
++	float weights[XRT_FACE_EXPRESSION2_COUNT_FB];
++	float confidences[XRT_FACE_CONFIDENCE2_COUNT_FB];
++
++	enum xrt_face_tracking_data_source2_fb data_source;
++	uint64_t sample_time_ns;
++
++	bool is_valid;
++	bool is_eye_following_blendshapes_valid;
++};
++
+ struct xrt_facial_expression_set
+ {
+ 	union {
+ 		struct xrt_facial_base_expression_set_htc base_expression_set_htc;
+ 		struct xrt_facial_eye_expression_set_htc eye_expression_set_htc;
+ 		struct xrt_facial_lip_expression_set_htc lip_expression_set_htc;
++		struct xrt_facial_expression_set2_fb face_expression_set2_fb;
+ 	};
+ };
+ 
+diff --git a/src/xrt/include/xrt/xrt_instance.h b/src/xrt/include/xrt/xrt_instance.h
+index 18c8393bc..ba9f604f4 100644
+--- a/src/xrt/include/xrt/xrt_instance.h
++++ b/src/xrt/include/xrt/xrt_instance.h
+@@ -45,6 +45,7 @@ struct xrt_instance_info
+ 	bool ext_hand_interaction_enabled;
+ 	bool htc_facial_tracking_enabled;
+ 	bool fb_body_tracking_enabled;
++	bool fb_face_tracking2_enabled;
+ };
+ 
+ /*!
+diff --git a/src/xrt/ipc/client/ipc_client_device.c b/src/xrt/ipc/client/ipc_client_device.c
+index 16de7c859..b6c207a04 100644
+--- a/src/xrt/ipc/client/ipc_client_device.c
++++ b/src/xrt/ipc/client/ipc_client_device.c
+@@ -8,6 +8,7 @@
+  * @ingroup ipc_client
+  */
+ 
++#include "xrt/xrt_defines.h"
+ #include "xrt/xrt_device.h"
+ 
+ #include "os/os_time.h"
+diff --git a/src/xrt/ipc/client/ipc_client_hmd.c b/src/xrt/ipc/client/ipc_client_hmd.c
+index b6e93b9d7..deff671a5 100644
+--- a/src/xrt/ipc/client/ipc_client_hmd.c
++++ b/src/xrt/ipc/client/ipc_client_hmd.c
+@@ -216,6 +216,21 @@ ipc_client_hmd_get_view_poses(struct xrt_device *xdev,
+ 	}
+ }
+ 
++static xrt_result_t
++ipc_client_hmd_get_face_tracking(struct xrt_device *xdev,
++                                 enum xrt_input_name facial_expression_type,
++                                 struct xrt_facial_expression_set *out_value)
++{
++	ipc_client_hmd_t *icd = ipc_client_hmd(xdev);
++
++	xrt_result_t xret = ipc_call_device_get_face_tracking( //
++	    icd->ipc_c,                                        //
++	    icd->device_id,                                    //
++	    facial_expression_type,                            //
++	    out_value);                                        //
++	IPC_CHK_ALWAYS_RET(icd->ipc_c, xret, "ipc_call_device_get_face_tracking");
++}
++
+ static bool
+ ipc_client_hmd_compute_distortion(
+     struct xrt_device *xdev, uint32_t view, float u, float v, struct xrt_uv_triplet *out_result)
+@@ -312,6 +327,7 @@ ipc_client_hmd_create(struct ipc_connection *ipc_c, struct xrt_tracking_origin *
+ 	ich->device_id = device_id;
+ 	ich->base.update_inputs = ipc_client_hmd_update_inputs;
+ 	ich->base.get_tracked_pose = ipc_client_hmd_get_tracked_pose;
++	ich->base.get_face_tracking = ipc_client_hmd_get_face_tracking;
+ 	ich->base.get_view_poses = ipc_client_hmd_get_view_poses;
+ 	ich->base.compute_distortion = ipc_client_hmd_compute_distortion;
+ 	ich->base.destroy = ipc_client_hmd_destroy;
+diff --git a/src/xrt/ipc/server/ipc_server_handler.c b/src/xrt/ipc/server/ipc_server_handler.c
+index c871bbd03..096a4bf1d 100644
+--- a/src/xrt/ipc/server/ipc_server_handler.c
++++ b/src/xrt/ipc/server/ipc_server_handler.c
+@@ -280,6 +280,9 @@ ipc_handle_instance_describe_client(volatile struct ipc_client_state *ics,
+ #ifdef OXR_HAVE_FB_body_tracking
+ 	EXT(fb_body_tracking_enabled);
+ #endif
++#ifdef OXR_HAVE_FB_face_tracking2
++	EXT(fb_face_tracking2_enabled);
++#endif
+ 
+ #undef EXT
+ #undef PTT
+@@ -373,6 +376,7 @@ ipc_handle_session_begin(volatile struct ipc_client_state *ics)
+ 	    .ext_hand_interaction_enabled = ics->client_state.info.ext_hand_interaction_enabled,
+ 	    .htc_facial_tracking_enabled = ics->client_state.info.htc_facial_tracking_enabled,
+ 	    .fb_body_tracking_enabled = ics->client_state.info.fb_body_tracking_enabled,
++	    .fb_face_tracking2_enabled = ics->client_state.info.fb_face_tracking2_enabled,
+ 	};
+ 
+ 	return xrt_comp_begin_session(ics->xc, &begin_session_info);
+diff --git a/src/xrt/state_trackers/oxr/CMakeLists.txt b/src/xrt/state_trackers/oxr/CMakeLists.txt
+index 608d1b855..90bf76b38 100644
+--- a/src/xrt/state_trackers/oxr/CMakeLists.txt
++++ b/src/xrt/state_trackers/oxr/CMakeLists.txt
+@@ -110,6 +110,11 @@ if(XRT_FEATURE_OPENXR_FACIAL_TRACKING_HTC)
+ 	target_sources(st_oxr PRIVATE oxr_api_face_tracking.c oxr_face_tracking.c)
+ endif()
+ 
++if(XRT_FEATURE_OPENXR_FACE_TRACKING2_FB)
++	target_sources(st_oxr PRIVATE oxr_api_face_tracking2_fb.c oxr_face_tracking2_fb.c)
++endif()
++
++
+ target_link_libraries(
+ 	st_oxr
+ 	PRIVATE
+diff --git a/src/xrt/state_trackers/oxr/oxr_api_face_tracking2_fb.c b/src/xrt/state_trackers/oxr/oxr_api_face_tracking2_fb.c
+new file mode 100644
+index 000000000..d4591f075
+--- /dev/null
++++ b/src/xrt/state_trackers/oxr/oxr_api_face_tracking2_fb.c
+@@ -0,0 +1,80 @@
++// Copyright 2024, Collabora, Ltd.
++// SPDX-License-Identifier: BSL-1.0
++/*!
++ * @file
++ * @brief  face tracking related API entrypoint functions.
++ * @author galister <galister@librevr.org>
++ * @ingroup oxr_api
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <inttypes.h>
++
++#include "util/u_trace_marker.h"
++
++#include "oxr_objects.h"
++#include "oxr_logger.h"
++
++#include "oxr_api_funcs.h"
++#include "oxr_api_verify.h"
++#include "oxr_handle.h"
++
++XRAPI_ATTR XrResult XRAPI_CALL
++oxr_xrCreateFaceTracker2FB(XrSession session,
++                           const XrFaceTrackerCreateInfo2FB *createInfo,
++                           XrFaceTracker2FB *faceTracker)
++{
++	OXR_TRACE_MARKER();
++
++	struct oxr_logger log;
++	XrResult ret = XR_SUCCESS;
++	struct oxr_session *sess = NULL;
++	struct oxr_face_tracker2_fb *face_tracker2_fb = NULL;
++	OXR_VERIFY_SESSION_AND_INIT_LOG(&log, session, sess, "xrCreateFaceTracker2FB");
++	OXR_VERIFY_SESSION_NOT_LOST(&log, sess);
++	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, createInfo, XR_TYPE_FACE_TRACKER_CREATE_INFO2_FB);
++	OXR_VERIFY_EXTENSION(&log, sess->sys->inst, FB_face_tracking2);
++
++	ret = oxr_face_tracker2_fb_create(&log, sess, createInfo, &face_tracker2_fb);
++	if (ret != XR_SUCCESS) {
++		return ret;
++	}
++
++	OXR_VERIFY_ARG_NOT_NULL(&log, face_tracker2_fb);
++	*faceTracker = oxr_face_tracker2_fb_to_openxr(face_tracker2_fb);
++
++	return XR_SUCCESS;
++}
++
++XRAPI_ATTR XrResult XRAPI_CALL
++oxr_xrDestroyFaceTracker2FB(XrFaceTracker2FB faceTracker)
++{
++	OXR_TRACE_MARKER();
++
++	struct oxr_logger log;
++	struct oxr_face_tracker2_fb *face_tracker2_fb = NULL;
++	OXR_VERIFY_FACE_TRACKER2_FB_AND_INIT_LOG(&log, faceTracker, face_tracker2_fb, "xrDestroyFaceTracker2FB");
++
++	return oxr_handle_destroy(&log, &face_tracker2_fb->handle);
++}
++
++XRAPI_ATTR XrResult XRAPI_CALL
++oxr_xrGetFaceExpressionWeights2FB(XrFaceTracker2FB faceTracker,
++                                  const XrFaceExpressionInfo2FB *expressionInfo,
++                                  XrFaceExpressionWeights2FB *expressionWeights)
++{
++	OXR_TRACE_MARKER();
++
++	struct oxr_logger log;
++	struct oxr_face_tracker2_fb *face_tracker2_fb = NULL;
++	OXR_VERIFY_FACE_TRACKER2_FB_AND_INIT_LOG(&log, faceTracker, face_tracker2_fb, "xrGetFaceExpressionWeights2FB");
++	OXR_VERIFY_SESSION_NOT_LOST(&log, face_tracker2_fb->sess);
++	OXR_VERIFY_ARG_NOT_NULL(&log, face_tracker2_fb->xdev);
++	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, expressionWeights, XR_TYPE_FACE_EXPRESSION_WEIGHTS2_FB);
++	OXR_VERIFY_ARG_NOT_NULL(&log, expressionWeights->weights);
++	OXR_VERIFY_ARG_NOT_NULL(&log, expressionWeights->confidences);
++
++	return oxr_get_face_expression_weights2_fb(&log, face_tracker2_fb, expressionInfo, expressionWeights);
++}
+diff --git a/src/xrt/state_trackers/oxr/oxr_api_funcs.h b/src/xrt/state_trackers/oxr/oxr_api_funcs.h
+index 0b00ce855..ac7d617e0 100644
+--- a/src/xrt/state_trackers/oxr/oxr_api_funcs.h
++++ b/src/xrt/state_trackers/oxr/oxr_api_funcs.h
+@@ -655,6 +655,23 @@ oxr_xrLocateBodyJointsFB(XrBodyTrackerFB bodyTracker,
+                          XrBodyJointLocationsFB *locations);
+ #endif
+ 
++#ifdef OXR_HAVE_FB_face_tracking2
++//! OpenXR API function @ep{xrCreateFaceTracker2FB}
++XRAPI_ATTR XrResult XRAPI_CALL
++oxr_xrCreateFaceTracker2FB(XrSession session,
++                           const XrFaceTrackerCreateInfo2FB *createInfo,
++                           XrFaceTracker2FB *faceTracker);
++
++//! OpenXR API function @ep{xrDestroyFaceTracker2FB}
++XRAPI_ATTR XrResult XRAPI_CALL
++oxr_xrDestroyFaceTracker2FB(XrFaceTracker2FB faceTracker);
++
++//! OpenXR API function @ep{xrGetFaceExpressionWeights2FB}
++XRAPI_ATTR XrResult XRAPI_CALL
++oxr_xrGetFaceExpressionWeights2FB(XrFaceTracker2FB faceTracker,
++                                  const XrFaceExpressionInfo2FB *expressionInfo,
++                                  XrFaceExpressionWeights2FB *expressionWeights);
++#endif
+ 
+ /*
+  *
+diff --git a/src/xrt/state_trackers/oxr/oxr_api_negotiate.c b/src/xrt/state_trackers/oxr/oxr_api_negotiate.c
+index 12adbb9d1..dcfcb16b2 100644
+--- a/src/xrt/state_trackers/oxr/oxr_api_negotiate.c
++++ b/src/xrt/state_trackers/oxr/oxr_api_negotiate.c
+@@ -332,6 +332,12 @@ handle_non_null(struct oxr_instance *inst, struct oxr_logger *log, const char *n
+ 	ENTRY_IF_EXT(xrLocateBodyJointsFB, FB_body_tracking);
+ #endif
+ 
++#ifdef OXR_HAVE_FB_face_tracking2
++	ENTRY_IF_EXT(xrCreateFaceTracker2FB, FB_face_tracking2);
++	ENTRY_IF_EXT(xrDestroyFaceTracker2FB, FB_face_tracking2);
++	ENTRY_IF_EXT(xrGetFaceExpressionWeights2FB, FB_face_tracking2);
++#endif
++
+ #ifdef OXR_HAVE_MNDX_xdev_space
+ 	ENTRY_IF_EXT(xrCreateXDevListMNDX, MNDX_xdev_space);
+ 	ENTRY_IF_EXT(xrGetXDevListGenerationNumberMNDX, MNDX_xdev_space);
+diff --git a/src/xrt/state_trackers/oxr/oxr_api_verify.h b/src/xrt/state_trackers/oxr/oxr_api_verify.h
+index 559c1a95e..b2667b9eb 100644
+--- a/src/xrt/state_trackers/oxr/oxr_api_verify.h
++++ b/src/xrt/state_trackers/oxr/oxr_api_verify.h
+@@ -74,6 +74,8 @@ extern "C" {
+ 	OXR_VERIFY_AND_SET_AND_INIT(log, thing, new_thing, oxr_passthrough_layer, PASSTHROUGH_LAYER, name, new_thing->sess->sys->inst)
+ #define OXR_VERIFY_FACE_TRACKER_HTC_AND_INIT_LOG(log, thing, new_thing, name) \
+ 	OXR_VERIFY_AND_SET_AND_INIT(log, thing, new_thing, oxr_facial_tracker_htc, FTRACKER, name, new_thing->sess->sys->inst)
++#define OXR_VERIFY_FACE_TRACKER2_FB_AND_INIT_LOG(log, thing, new_thing, name) \
++	OXR_VERIFY_AND_SET_AND_INIT(log, thing, new_thing, oxr_face_tracker2_fb, FTRACKER, name, new_thing->sess->sys->inst)
+ #define OXR_VERIFY_BODY_TRACKER_FB_AND_INIT_LOG(log, thing, new_thing, name) \
+ 	OXR_VERIFY_AND_SET_AND_INIT(log, thing, new_thing, oxr_body_tracker_fb, BTRACKER, name, new_thing->sess->sys->inst)
+ #define OXR_VERIFY_XDEVLIST_AND_INIT_LOG(log, thing, new_thing, name) \
+diff --git a/src/xrt/state_trackers/oxr/oxr_extension_support.h b/src/xrt/state_trackers/oxr/oxr_extension_support.h
+index 7749189e3..db59ea00c 100644
+--- a/src/xrt/state_trackers/oxr/oxr_extension_support.h
++++ b/src/xrt/state_trackers/oxr/oxr_extension_support.h
+@@ -427,6 +427,17 @@
+ #endif
+ 
+ 
++/*
++ * XR_FB_face_tracking2
++ */
++#if defined(XR_FB_face_tracking2) && defined(XRT_FEATURE_OPENXR_FACE_TRACKING2_FB)
++#define OXR_HAVE_FB_face_tracking2
++#define OXR_EXTENSION_SUPPORT_FB_face_tracking2(_) _(FB_face_tracking2, FB_FACE_TRACKING2)
++#else
++#define OXR_EXTENSION_SUPPORT_FB_face_tracking2(_)
++#endif
++
++
+ /*
+  * XR_FB_composition_layer_alpha_blend
+  */
+@@ -784,6 +795,7 @@
+     OXR_EXTENSION_SUPPORT_EXT_samsung_odyssey_controller(_) \
+     OXR_EXTENSION_SUPPORT_BD_controller_interaction(_) \
+     OXR_EXTENSION_SUPPORT_FB_body_tracking(_) \
++    OXR_EXTENSION_SUPPORT_FB_face_tracking2(_) \
+     OXR_EXTENSION_SUPPORT_FB_composition_layer_alpha_blend(_) \
+     OXR_EXTENSION_SUPPORT_FB_composition_layer_image_layout(_) \
+     OXR_EXTENSION_SUPPORT_FB_composition_layer_settings(_) \
+diff --git a/src/xrt/state_trackers/oxr/oxr_face_tracking2_fb.c b/src/xrt/state_trackers/oxr/oxr_face_tracking2_fb.c
+new file mode 100644
+index 000000000..eb32fe893
+--- /dev/null
++++ b/src/xrt/state_trackers/oxr/oxr_face_tracking2_fb.c
+@@ -0,0 +1,143 @@
++// Copyright 2024, Collabora, Ltd.
++// SPDX-License-Identifier: BSL-1.0
++/*!
++ * @file
++ * @brief  face tracking related API entrypoint functions.
++ * @author galister <galister@librevr.org>
++ * @ingroup oxr_main
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <inttypes.h>
++
++#include "oxr_objects.h"
++#include "oxr_logger.h"
++#include "oxr_handle.h"
++#include "xrt/xrt_defines.h"
++
++static XrResult
++oxr_face_tracker2_fb_destroy_cb(struct oxr_logger *log, struct oxr_handle_base *hb)
++{
++	struct oxr_face_tracker2_fb *face_tracker2_fb = (struct oxr_face_tracker2_fb *)hb;
++	free(face_tracker2_fb);
++	return XR_SUCCESS;
++}
++
++XrResult
++oxr_face_tracker2_fb_create(struct oxr_logger *log,
++                            struct oxr_session *sess,
++                            const XrFaceTrackerCreateInfo2FB *createInfo,
++                            struct oxr_face_tracker2_fb **out_face_tracker2_fb)
++{
++	if (createInfo->faceExpressionSet != XR_FACE_EXPRESSION_SET2_DEFAULT_FB) {
++		return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED, "Unsupported expression set");
++	}
++
++	bool supports_audio, supports_visual;
++
++	oxr_system_get_face_tracking2_fb_support(log, sess->sys->inst, &supports_audio, &supports_visual);
++
++	if (!supports_audio && !supports_visual)
++		return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED, "System does not support FB2 face tracking");
++
++	bool want_audio = false;
++	bool want_visual = false;
++
++	for (uint32_t i = 0; i < createInfo->requestedDataSourceCount; i++) {
++		if (createInfo->requestedDataSources[i] == XR_FACE_TRACKING_DATA_SOURCE2_AUDIO_FB) {
++			if (!supports_audio)
++				return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED, "Audio source not supported");
++			if (want_audio)
++				return oxr_error(log, XR_ERROR_VALIDATION_FAILURE, "Duplicate entry for data source");
++			want_audio = true;
++		} else if (createInfo->requestedDataSources[i] == XR_FACE_TRACKING_DATA_SOURCE2_VISUAL_FB) {
++			if (!supports_visual)
++				return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED, "Visual source not supported");
++			if (want_visual)
++				return oxr_error(log, XR_ERROR_VALIDATION_FAILURE, "Duplicate entry for data source");
++			want_visual = true;
++		} else {
++			return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED, "Unsupported data source");
++		}
++	}
++
++	if (!want_audio && !want_visual) {
++		if (supports_visual)
++			want_visual = true;
++		else
++			want_audio = true;
++	}
++
++	struct xrt_device *xdev = GET_XDEV_BY_ROLE(sess->sys, face);
++	if (xdev == NULL) {
++		return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED, "No device found for face tracking role");
++	}
++
++	if (!xdev->face_tracking_supported) {
++		return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED, "Device does not support FB2 face tracking");
++	}
++
++	if (xdev->get_face_tracking == NULL) {
++		return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED, "xdev->get_face_tracking == NULL");
++	}
++
++	struct oxr_face_tracker2_fb *face_tracker2_fb = NULL;
++	OXR_ALLOCATE_HANDLE_OR_RETURN(log, face_tracker2_fb, OXR_XR_DEBUG_FTRACKER, oxr_face_tracker2_fb_destroy_cb,
++	                              &sess->handle);
++
++	face_tracker2_fb->sess = sess;
++	face_tracker2_fb->xdev = xdev;
++	face_tracker2_fb->audio_enabled = want_audio;
++	face_tracker2_fb->visual_enabled = want_visual;
++
++	*out_face_tracker2_fb = face_tracker2_fb;
++
++	return XR_SUCCESS;
++}
++
++XrResult
++oxr_get_face_expression_weights2_fb(struct oxr_logger *log,
++                                    struct oxr_face_tracker2_fb *face_tracker2_fb,
++                                    const XrFaceExpressionInfo2FB *expression_info,
++                                    XrFaceExpressionWeights2FB *expression_weights)
++{
++	if (expression_weights->weightCount < XRT_FACE_EXPRESSION2_COUNT_FB) {
++		return oxr_error(log, XR_ERROR_SIZE_INSUFFICIENT,
++		                 "weights must have at least XR_FACE_EXPRESSION2_COUNT_FB elements");
++	}
++	if (expression_weights->confidenceCount < XRT_FACE_CONFIDENCE2_COUNT_FB) {
++		return oxr_error(log, XR_ERROR_SIZE_INSUFFICIENT,
++		                 "confidences must have at least XR_FACE_CONFIDENCE2_COUNT_FB elements");
++	}
++	struct xrt_facial_expression_set result = {0};
++
++	enum xrt_input_name ft_input_name =
++	    face_tracker2_fb->visual_enabled ? XRT_INPUT_FB_FACE_TRACKING2_VISUAL : XRT_INPUT_FB_FACE_TRACKING2_AUDIO;
++
++	xrt_device_get_face_tracking(face_tracker2_fb->xdev, ft_input_name, &result);
++
++	expression_weights->isValid = result.face_expression_set2_fb.is_valid;
++	if (!expression_weights->isValid)
++		return XR_SUCCESS;
++
++	expression_weights->isEyeFollowingBlendshapesValid =
++	    result.face_expression_set2_fb.is_eye_following_blendshapes_valid;
++
++	const struct oxr_instance *inst = face_tracker2_fb->sess->sys->inst;
++	expression_weights->time =
++	    time_state_monotonic_to_ts_ns(inst->timekeeping, result.face_expression_set2_fb.sample_time_ns);
++
++	expression_weights->dataSource = (XrFaceTrackingDataSource2FB)result.face_expression_set2_fb.data_source;
++
++	expression_weights->weightCount = XRT_FACE_EXPRESSION2_COUNT_FB;
++	expression_weights->confidenceCount = XRT_FACE_CONFIDENCE2_COUNT_FB;
++
++	memcpy(expression_weights->weights, result.face_expression_set2_fb.weights,
++	       sizeof(float) * XRT_FACE_EXPRESSION2_COUNT_FB);
++	memcpy(expression_weights->confidences, result.face_expression_set2_fb.confidences,
++	       sizeof(float) * XRT_FACE_CONFIDENCE2_COUNT_FB);
++
++	return XR_SUCCESS;
++}
+diff --git a/src/xrt/state_trackers/oxr/oxr_instance.c b/src/xrt/state_trackers/oxr/oxr_instance.c
+index 65b91c726..78f7048b3 100644
+--- a/src/xrt/state_trackers/oxr/oxr_instance.c
++++ b/src/xrt/state_trackers/oxr/oxr_instance.c
+@@ -278,6 +278,9 @@ oxr_instance_create(struct oxr_logger *log,
+ #endif
+ #ifdef OXR_HAVE_FB_body_tracking
+ 	    .fb_body_tracking_enabled = extensions->FB_body_tracking,
++#endif
++#ifdef OXR_HAVE_FB_face_tracking2
++	    .fb_face_tracking2_enabled = extensions->FB_face_tracking2,
+ #endif
+ 	};
+ 	snprintf(i_info.application_name, sizeof(inst->xinst->instance_info.application_name), "%s",
+diff --git a/src/xrt/state_trackers/oxr/oxr_objects.h b/src/xrt/state_trackers/oxr/oxr_objects.h
+index 11446d5ac..d31d408d8 100644
+--- a/src/xrt/state_trackers/oxr/oxr_objects.h
++++ b/src/xrt/state_trackers/oxr/oxr_objects.h
+@@ -122,7 +122,7 @@ struct oxr_action_set_ref;
+ struct oxr_action_ref;
+ struct oxr_hand_tracker;
+ struct oxr_facial_tracker_htc;
+-struct oxr_facial_tracker_fb;
++struct oxr_face_tracker2_fb;
+ struct oxr_body_tracker_fb;
+ struct oxr_xdev_list;
+ 
+@@ -413,6 +413,18 @@ oxr_body_tracker_fb_to_openxr(struct oxr_body_tracker_fb *body_tracker_fb)
+ }
+ #endif
+ 
++#ifdef OXR_HAVE_FB_face_tracking2
++/*!
++ * To go back to a OpenXR object.
++ *
++ * @relates oxr_face_tracker2_fb
++ */
++static inline XrFaceTracker2FB
++oxr_face_tracker2_fb_to_openxr(struct oxr_face_tracker2_fb *face_tracker2_fb)
++{
++	return XRT_CAST_PTR_TO_OXR_HANDLE(XrFaceTracker2FB, face_tracker2_fb);
++}
++#endif
+ /*!
+  *
+  * @name oxr_input.c
+@@ -1035,6 +1047,12 @@ oxr_system_get_face_tracking_htc_support(struct oxr_logger *log,
+                                          bool *supports_eye,
+                                          bool *supports_lip);
+ 
++void
++oxr_system_get_face_tracking2_fb_support(struct oxr_logger *log,
++                                         struct oxr_instance *inst,
++                                         bool *supports_audio,
++                                         bool *supports_visual);
++
+ bool
+ oxr_system_get_body_tracking_fb_support(struct oxr_logger *log, struct oxr_instance *inst);
+ 
+@@ -2744,6 +2762,43 @@ oxr_locate_body_joints_fb(struct oxr_logger *log,
+                           XrBodyJointLocationsFB *locations);
+ #endif
+ 
++#ifdef OXR_HAVE_FB_face_tracking2
++/*!
++ * FB specific Face tracker2.
++ *
++ * Parent type/handle is @ref oxr_instance
++ *
++ * @obj{XrFaceTracker2FB}
++ * @extends oxr_handle_base
++ */
++struct oxr_face_tracker2_fb
++{
++	//! Common structure for things referred to by OpenXR handles.
++	struct oxr_handle_base handle;
++
++	//! Owner of this face tracker.
++	struct oxr_session *sess;
++
++	//! xrt_device backing this face tracker
++	struct xrt_device *xdev;
++
++	bool audio_enabled;
++	bool visual_enabled;
++};
++
++XrResult
++oxr_face_tracker2_fb_create(struct oxr_logger *log,
++                            struct oxr_session *sess,
++                            const XrFaceTrackerCreateInfo2FB *createInfo,
++                            struct oxr_face_tracker2_fb **out_face_tracker2_fb);
++
++XrResult
++oxr_get_face_expression_weights2_fb(struct oxr_logger *log,
++                                    struct oxr_face_tracker2_fb *face_tracker2_fb,
++                                    const XrFaceExpressionInfo2FB *expression_info,
++                                    XrFaceExpressionWeights2FB *expression_weights);
++#endif
++
+ #ifdef OXR_HAVE_MNDX_xdev_space
+ /*!
+  * Object that holds a list of the current @ref xrt_devices.
+diff --git a/src/xrt/state_trackers/oxr/oxr_session.c b/src/xrt/state_trackers/oxr/oxr_session.c
+index a95b5ee71..421778030 100644
+--- a/src/xrt/state_trackers/oxr/oxr_session.c
++++ b/src/xrt/state_trackers/oxr/oxr_session.c
+@@ -236,6 +236,9 @@ oxr_session_begin(struct oxr_logger *log, struct oxr_session *sess, const XrSess
+ #endif
+ #ifdef OXR_HAVE_FB_body_tracking
+ 		    .fb_body_tracking_enabled = extensions->FB_body_tracking,
++#endif
++#ifdef OXR_HAVE_FB_face_tracking2
++		    .fb_face_tracking2_enabled = extensions->FB_face_tracking2,
+ #endif
+ 		};
+ 
+diff --git a/src/xrt/state_trackers/oxr/oxr_system.c b/src/xrt/state_trackers/oxr/oxr_system.c
+index 652221204..bd38f444f 100644
+--- a/src/xrt/state_trackers/oxr/oxr_system.c
++++ b/src/xrt/state_trackers/oxr/oxr_system.c
+@@ -14,6 +14,7 @@
+ #include <inttypes.h>
+ #include <assert.h>
+ 
++#include "xrt/xrt_defines.h"
+ #include "xrt/xrt_device.h"
+ #include "util/u_debug.h"
+ #include "util/u_verify.h"
+@@ -317,6 +318,36 @@ oxr_system_get_face_tracking_htc_support(struct oxr_logger *log,
+ 	}
+ }
+ 
++void
++oxr_system_get_face_tracking2_fb_support(struct oxr_logger *log,
++                                         struct oxr_instance *inst,
++                                         bool *supports_audio,
++                                         bool *supports_visual)
++{
++	if (supports_audio != NULL)
++		*supports_audio = false;
++
++	if (supports_visual != NULL)
++		*supports_visual = false;
++
++	struct oxr_system *sys = &inst->system;
++	struct xrt_device *face_xdev = GET_XDEV_BY_ROLE(sys, face);
++
++	if (face_xdev == NULL || !face_xdev->face_tracking_supported || face_xdev->inputs == NULL) {
++		return;
++	}
++
++	for (size_t input_idx = 0; input_idx < face_xdev->input_count; ++input_idx) {
++		const struct xrt_input *input = &face_xdev->inputs[input_idx];
++		if (input->name == XRT_INPUT_FB_FACE_TRACKING2_VISUAL) {
++			*supports_visual = true;
++		} else if (input->name == XRT_INPUT_FB_FACE_TRACKING2_AUDIO) {
++			*supports_audio = true;
++		}
++	}
++	return;
++}
++
+ static bool
+ oxr_system_get_body_tracking_support(struct oxr_logger *log,
+                                      struct oxr_instance *inst,
+@@ -449,6 +480,22 @@ oxr_system_get_properties(struct oxr_logger *log, struct oxr_system *sys, XrSyst
+ 	}
+ #endif // OXR_HAVE_FB_body_tracking
+ 
++#ifdef OXR_HAVE_FB_face_tracking2
++	XrSystemFaceTrackingProperties2FB *face_tracking2_fb_props = NULL;
++	if (sys->inst->extensions.FB_face_tracking2) {
++		face_tracking2_fb_props = OXR_GET_OUTPUT_FROM_CHAIN(
++		    properties, XR_TYPE_SYSTEM_FACE_TRACKING_PROPERTIES2_FB, XrSystemFaceTrackingProperties2FB);
++	}
++
++	bool supports_audio, supports_visual;
++
++	if (face_tracking2_fb_props) {
++		oxr_system_get_face_tracking2_fb_support(log, sys->inst, &supports_audio, &supports_visual);
++		face_tracking2_fb_props->supportsAudioFaceTracking = supports_audio;
++		face_tracking2_fb_props->supportsVisualFaceTracking = supports_visual;
++	}
++#endif // OXR_HAVE_FB_face_tracking2
++
+ 
+ #ifdef OXR_HAVE_MNDX_xdev_space
+ 	XrSystemXDevSpacePropertiesMNDX *xdev_space_props = NULL;
