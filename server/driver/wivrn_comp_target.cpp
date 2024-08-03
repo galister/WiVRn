@@ -239,6 +239,9 @@ static bool comp_wivrn_check_ready(struct comp_target * ct)
 			cn->c->debug.atw_off = false;
 		}
 	}
+
+	cn->cnx->apply_dynamic_foveation();
+
 	return true;
 }
 
@@ -470,6 +473,7 @@ static VkResult comp_wivrn_present(struct comp_target * ct,
 
 	auto & view_info = cn->psc.view_info;
 	view_info.display_time = cn->cnx->get_offset().to_headset(desired_present_time_ns);
+	view_info.foveation = cn->cnx->get_foveation_parameters();
 	for (int eye = 0; eye < 2; ++eye)
 	{
 		const auto & slot = cn->c->base.slot;
