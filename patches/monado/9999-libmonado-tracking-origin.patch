@@ -1,0 +1,116 @@
+From 454932a4c653bb651cc29703bec5ff5dfbedc8d8 Mon Sep 17 00:00:00 2001
+From: galister <3123227-galister@users.noreply.gitlab.com>
+Date: Tue, 27 Aug 2024 20:53:11 +0900
+Subject: [PATCH 1/2] t/libmonado: add MND_PROPERTY_TRACKING_ORIGIN_U32
+
+---
+ src/xrt/targets/libmonado/monado.c | 9 +++++++--
+ src/xrt/targets/libmonado/monado.h | 4 +++-
+ 2 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/src/xrt/targets/libmonado/monado.c b/src/xrt/targets/libmonado/monado.c
+index b2a2d01d95..bfb8866c2d 100644
+--- a/src/xrt/targets/libmonado/monado.c
++++ b/src/xrt/targets/libmonado/monado.c
+@@ -338,9 +338,14 @@ mnd_root_get_device_info_u32(mnd_root_t *root, uint32_t device_index, mnd_proper
+ 		return MND_ERROR_INVALID_VALUE;
+ 	}
+ 
+-	PE("Is not a valid u32 property (%u)", prop);
++	const struct ipc_shared_device *shared_device = &root->ipc_c.ism->isdevs[device_index];
+ 
+-	return MND_ERROR_INVALID_PROPERTY;
++	switch (prop) {
++	case MND_PROPERTY_TRACKING_ORIGIN_U32: *out_u32 = shared_device->tracking_origin_index; break;
++	default: PE("Is not a valid string property (%u)", prop); return MND_ERROR_INVALID_PROPERTY;
++	}
++
++	return MND_SUCCESS;
+ }
+ 
+ mnd_result_t
+diff --git a/src/xrt/targets/libmonado/monado.h b/src/xrt/targets/libmonado/monado.h
+index 68897302fc..2730f91af0 100644
+--- a/src/xrt/targets/libmonado/monado.h
++++ b/src/xrt/targets/libmonado/monado.h
+@@ -27,7 +27,7 @@ extern "C" {
+ //! Minor version of the API.
+ #define MND_API_VERSION_MINOR 3
+ //! Patch version of the API.
+-#define MND_API_VERSION_PATCH 0
++#define MND_API_VERSION_PATCH 1
+ 
+ /*!
+  * Result codes for operations, negative are errors, zero or positives are
+@@ -72,6 +72,8 @@ typedef enum mnd_property
+ 	MND_PROPERTY_NAME_STRING = 0,
+ 	//! Supported in version 1.2 and above.
+ 	MND_PROPERTY_SERIAL_STRING = 1,
++	//! Supported in version 1.3.1 and above.
++	MND_PROPERTY_TRACKING_ORIGIN_U32 = 2,
+ } mnd_property_t;
+ 
+ /*!
+-- 
+GitLab
+
+
+From b99eb65c228dd9a456a56bce3b4c77372a0626cb Mon Sep 17 00:00:00 2001
+From: galister <3123227-galister@users.noreply.gitlab.com>
+Date: Fri, 30 Aug 2024 23:13:25 +0900
+Subject: [PATCH 2/2] t/libmonado: properties for position/orientation support
+
+---
+ src/xrt/targets/libmonado/monado.c | 12 +++++++++---
+ src/xrt/targets/libmonado/monado.h |  4 ++++
+ 2 files changed, 13 insertions(+), 3 deletions(-)
+
+diff --git a/src/xrt/targets/libmonado/monado.c b/src/xrt/targets/libmonado/monado.c
+index bfb8866c2d..5d87735d6c 100644
+--- a/src/xrt/targets/libmonado/monado.c
++++ b/src/xrt/targets/libmonado/monado.c
+@@ -306,9 +306,15 @@ mnd_root_get_device_info_bool(mnd_root_t *root, uint32_t device_index, mnd_prope
+ 		return MND_ERROR_INVALID_VALUE;
+ 	}
+ 
+-	PE("Is not a valid boolean property (%u)", prop);
++	const struct ipc_shared_device *shared_device = &root->ipc_c.ism->isdevs[device_index];
+ 
+-	return MND_ERROR_INVALID_PROPERTY;
++	switch (prop) {
++	case MND_PROPERTY_SUPPORTS_POSITION_BOOL: *out_bool = shared_device->position_tracking_supported; break;
++	case MND_PROPERTY_SUPPORTS_ORIENTATION_BOOL: *out_bool = shared_device->orientation_tracking_supported; break;
++	default: PE("Is not a valid boolean property (%u)", prop); return MND_ERROR_INVALID_PROPERTY;
++	}
++
++	return MND_SUCCESS;
+ }
+ 
+ mnd_result_t
+@@ -342,7 +348,7 @@ mnd_root_get_device_info_u32(mnd_root_t *root, uint32_t device_index, mnd_proper
+ 
+ 	switch (prop) {
+ 	case MND_PROPERTY_TRACKING_ORIGIN_U32: *out_u32 = shared_device->tracking_origin_index; break;
+-	default: PE("Is not a valid string property (%u)", prop); return MND_ERROR_INVALID_PROPERTY;
++	default: PE("Is not a valid u32 property (%u)", prop); return MND_ERROR_INVALID_PROPERTY;
+ 	}
+ 
+ 	return MND_SUCCESS;
+diff --git a/src/xrt/targets/libmonado/monado.h b/src/xrt/targets/libmonado/monado.h
+index 2730f91af0..7f56439a43 100644
+--- a/src/xrt/targets/libmonado/monado.h
++++ b/src/xrt/targets/libmonado/monado.h
+@@ -74,6 +74,10 @@ typedef enum mnd_property
+ 	MND_PROPERTY_SERIAL_STRING = 1,
+ 	//! Supported in version 1.3.1 and above.
+ 	MND_PROPERTY_TRACKING_ORIGIN_U32 = 2,
++	//! Supported in version 1.3.1 and above.
++	MND_PROPERTY_SUPPORTS_POSITION_BOOL = 3,
++	//! Supported in version 1.3.1 and above.
++	MND_PROPERTY_SUPPORTS_ORIENTATION_BOOL = 4,
+ } mnd_property_t;
+ 
+ /*!
+-- 
+GitLab
+

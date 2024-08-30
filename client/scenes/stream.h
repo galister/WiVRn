@@ -26,6 +26,7 @@
 #include "stream_reprojection.h"
 #include "wivrn_client.h"
 #include "wivrn_packets.h"
+#include <atomic>
 #include <mutex>
 #include <shared_mutex>
 #include <thread>
@@ -78,10 +79,10 @@ private:
 	std::unique_ptr<wivrn_session> network_session;
 	std::atomic<bool> exiting = false;
 	std::thread network_thread;
-	std::mutex local_floor_mutex;
-	xr::space local_floor;
 	std::mutex tracking_control_mutex;
 	to_headset::tracking_control tracking_control;
+	xr::space stage;
+	std::atomic<bool> local_dirty = false;
 	std::atomic<XrDuration> display_time_phase = 0;
 	std::atomic<XrDuration> display_time_period = 0;
 	std::optional<std::thread> tracking_thread;
@@ -135,7 +136,7 @@ public:
 	void on_focused() override;
 	void on_unfocused() override;
 
-	void operator()(to_headset::handshake &&){};
+	void operator()(to_headset::handshake &&) {};
 	void operator()(to_headset::video_stream_data_shard &&);
 	void operator()(to_headset::haptics &&);
 	void operator()(to_headset::timesync_query &&);
@@ -230,7 +231,6 @@ private:
 
 	void accumulate_metrics(XrTime predicted_display_time, const std::vector<std::shared_ptr<shard_accumulator::blit_handle>> & blit_handles, const gpu_timestamps & timestamps);
 	XrCompositionLayerQuad plot_performance_metrics(XrTime predicted_display_time);
-	void update_local_floor(XrTime when);
 	void on_reference_space_changed(XrReferenceSpaceType space, XrTime) override;
 };
 } // namespace scenes

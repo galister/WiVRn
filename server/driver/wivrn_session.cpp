@@ -23,6 +23,7 @@
 #include "main/comp_compositor.h"
 #include "main/comp_main_interface.h"
 #include "main/comp_target.h"
+#include "steamvr_lh_interface.h"
 #include "util/u_builders.h"
 #include "util/u_logging.h"
 #include "util/u_system.h"
@@ -37,9 +38,13 @@
 #include "wivrn_foveation.h"
 #include "wivrn_hmd.h"
 
+#include "wivrn_packets.h"
+#include "xrt/xrt_defines.h"
+#include "xrt/xrt_device.h"
 #include "xrt/xrt_session.h"
 #include <cmath>
 #include <magic_enum.hpp>
+#include <memory>
 #include <vulkan/vulkan.h>
 
 struct wivrn_comp_target_factory : public comp_target_factory
@@ -160,14 +165,49 @@ xrt_result_t xrt::drivers::wivrn::wivrn_session::create_session(xrt::drivers::wi
 	if (self->hmd->face_tracking_supported)
 		usysds->base.base.static_roles.face = self->hmd.get();
 
+	auto use_steamvr_lh = std::getenv("WIVRN_USE_STEAMVR_LH");
+	xrt_system_devices * lhdevs = NULL;
+
+	xrt_device * active_left_hand = nullptr;
+	xrt_device * active_right_hand = nullptr;
+
+	if (use_steamvr_lh && steamvr_lh_create_devices(&lhdevs) == XRT_SUCCESS)
+	{
+		U_LOG_W("Found %lu lighthouse devices:", lhdevs->xdev_count);
+		for (int i = 0; i < lhdevs->xdev_count; i++)
+		{
+			auto lhdev = lhdevs->xdevs[i];
+			devices->xdevs[n++] = lhdev;
+			switch (lhdev->device_type)
+			{
+				case XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER:
+					active_left_hand = lhdev;
+					break;
+				case XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER:
+					active_right_hand = lhdev;
+					break;
+				default:
+					break;
+			}
+		}
+	}
+
 	if (self->left_hand)
 	{
-		devices->xdevs[n++] = self->left_hand.get();
+		if (!active_left_hand)
+		{
+			active_left_hand = self->left_hand.get();
+			devices->xdevs[n++] = self->left_hand.get();
+		}
 		usysds->base.base.static_roles.hand_tracking.left = self->left_hand.get();
 	}
 	if (self->right_hand)
 	{
-		devices->xdevs[n++] = self->right_hand.get();
+		if (!active_right_hand)
+		{
+			active_right_hand = self->right_hand.get();
+			devices->xdevs[n++] = self->right_hand.get();
+		}
 		usysds->base.base.static_roles.hand_tracking.right = self->right_hand.get();
 	}
 	if (self->info.eye_gaze)
@@ -185,7 +225,7 @@ xrt_result_t xrt::drivers::wivrn::wivrn_session::create_session(xrt::drivers::wi
 	}
 	devices->xdev_count = n;
 
-	u_system_devices_static_finalize(usysds, self->left_hand.get(), self->right_hand.get());
+	u_system_devices_static_finalize(usysds, active_left_hand, active_right_hand);
 
 	wivrn_comp_target_factory ctf(self, self->info.preferred_refresh_rate);
 	auto xret = comp_main_create_system_compositor(self->hmd.get(), &ctf, out_xsysc);
@@ -236,41 +276,18 @@ void wivrn_session::operator()(from_headset::headset_info_packet &&)
 }
 void wivrn_session::operator()(from_headset::tracking && tracking)
 {
-	// Reset the tracking origin on reconnect
-	if (tracking.timestamp == tracking.production_timestamp)
-	{
-		for (const auto & p: tracking.device_poses)
-		{
-			if (p.device == device_id::HEAD)
-			{
-				if (p.flags & from_headset::tracking::flags::position_valid)
-				{
-					const auto & pos = p.pose.position;
-					if (reconnect_offset.z != 0)
-					{
-						// Apply offset
-						xrt_pose offset;
-						auto tracking_origin = ((xrt_device *)hmd.get())->tracking_origin;
-						space_overseer->get_tracking_origin_offset(space_overseer, tracking_origin, &offset);
-						offset.position.x = reconnect_offset.x - pos.x;
-						offset.position.y = reconnect_offset.y - pos.y;
-						auto res = space_overseer->set_tracking_origin_offset(space_overseer, tracking_origin, &offset);
-						U_LOG_I("Updated tracking origin, offset %f,%f",
-						        reconnect_offset.x - pos.x,
-						        reconnect_offset.y - pos.y);
-					}
-					// Store latest position
-					reconnect_offset = {
-					        .x = pos.x,
-					        .y = pos.y,
-					};
-				}
-				break;
-			}
-		}
-	}
-
 	auto offset = offset_est.get_offset();
+
+	if (tracking.state_flags & from_headset::tracking::state_flags::recentered)
+	{
+		// xrt_pose offset;
+		// auto tracking_origin = ((xrt_device *)hmd.get())->tracking_origin;
+		// space_overseer->get_tracking_origin_offset(space_overseer, tracking_origin, &offset);
+		// offset.position.x = reconnect_offset.x - pos.x;
+		// offset.position.y = reconnect_offset.y - pos.y;
+		// auto res = space_overseer->set_tracking_origin_offset(space_overseer, tracking_origin, &offset);
+		U_LOG_I("TODO: Recenter");
+	}
 
 	hmd->update_tracking(tracking, offset);
 	left_hand->update_tracking(tracking, offset);
@@ -453,9 +470,6 @@ void wivrn_session::reconnect()
 	{
 		U_LOG_W("Failed to notify session state change");
 	}
-
-	// Flag offset to be applied
-	reconnect_offset.z = 1;
 
 	U_LOG_I("Waiting for new connection");
 	auto tcp = accept_connection(0 /*stdin*/, [this]() { return quit_if_no_client(xrt_system); });

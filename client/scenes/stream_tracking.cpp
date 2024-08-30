@@ -20,6 +20,7 @@
 #include "application.h"
 #include "stream.h"
 #include "utils/ranges.h"
+#include "wivrn_packets.h"
 #include <spdlog/spdlog.h>
 #include <thread>
 
@@ -182,7 +183,7 @@ void scenes::stream::tracking()
 	auto get_int_extra = jni::klass("android/content/Intent").method<jni::Int>("getIntExtra", level_jstr, default_jint);
 
 	XrTime next_battery_check = 0;
-	const XrDuration battery_check_interval = 5'000'000'000; // 5s
+	const XrDuration battery_check_interval = 60'000'000'000; // 60s
 #endif
 	std::vector<std::pair<device_id, XrSpace>> spaces = {
 	        {device_id::HEAD, application::view()},
@@ -254,14 +255,17 @@ void scenes::stream::tracking()
 						j.fov = i.fov;
 					}
 
-					packet.flags = flags;
+					packet.view_flags = flags;
+
+					packet.state_flags = 0;
+					if (local_dirty.exchange(false))
+						packet.state_flags = xrt::drivers::wivrn::from_headset::tracking::recentered;
 
 					packet.device_poses.clear();
-					std::lock_guard lock(local_floor_mutex);
 					for (auto [device, space]: spaces)
 					{
 						if (enabled(control, device))
-							packet.device_poses.push_back(locate_space(device, space, local_floor, t0 + Δt));
+							packet.device_poses.push_back(locate_space(device, space, stage, t0 + Δt));
 					}
 
 					send_stream(packet);
@@ -271,14 +275,14 @@ void scenes::stream::tracking()
 						if (control.enabled[size_t(tid::left_hand)])
 						{
 							hands.hand = xrt::drivers::wivrn::from_headset::hand_tracking::left;
-							hands.joints = locate_hands(application::get_left_hand(), local_floor, hands.timestamp);
+							hands.joints = locate_hands(application::get_left_hand(), stage, hands.timestamp);
 							send_stream(hands);
 						}
 
 						if (control.enabled[size_t(tid::right_hand)])
 						{
 							hands.hand = xrt::drivers::wivrn::from_headset::hand_tracking::right;
-							hands.joints = locate_hands(application::get_right_hand(), local_floor, hands.timestamp);
+							hands.joints = locate_hands(application::get_right_hand(), stage, hands.timestamp);
 							send_stream(hands);
 						}
 					}
