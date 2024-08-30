@@ -15,7 +15,7 @@ set(XRT_BUILD_DRIVER_REMOTE             OFF)
 set(XRT_BUILD_DRIVER_RIFT_S             OFF)
 set(XRT_BUILD_DRIVER_ROKID              OFF)
 set(XRT_BUILD_DRIVER_SIMULATED          OFF)
-set(XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE OFF)
+set(XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE ON)
 set(XRT_BUILD_DRIVER_TWRAP              OFF)
 set(XRT_BUILD_DRIVER_VF                 OFF)
 set(XRT_BUILD_DRIVER_VIVE               OFF)
@@ -97,9 +97,12 @@ target_compile_features(wivrn-server PRIVATE cxx_std_20)
 target_compile_definitions(wivrn-server PRIVATE VULKAN_HPP_NO_CONSTRUCTORS)
 
 target_include_directories(wivrn-server SYSTEM PRIVATE ${monado_SOURCE_DIR}/src/xrt/compositor/)
+target_include_directories(wivrn-server SYSTEM PRIVATE ${monado_SOURCE_DIR}/src/xrt/drivers/steamvr_lh/)
 target_include_directories(wivrn-server PRIVATE .)
 
 target_link_libraries(wivrn-server PRIVATE CLI11::CLI11)
+
+target_link_libraries(wivrn-server PRIVATE drv_steamvr_lh)
 
 if(WIVRN_USE_NVENC)
         target_sources(wivrn-server PRIVATE encoder/video_encoder_nvenc.cpp)

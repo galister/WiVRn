@@ -1,0 +1,348 @@
+diff --git a/src/xrt/drivers/steamvr_lh/steamvr_lh.cpp b/src/xrt/drivers/steamvr_lh/steamvr_lh.cpp
+index a1a1d3de6..8399af68c 100644
+--- a/src/xrt/drivers/steamvr_lh/steamvr_lh.cpp
++++ b/src/xrt/drivers/steamvr_lh/steamvr_lh.cpp
+@@ -25,10 +25,10 @@
+ #include "util/u_device.h"
+ #include "util/u_misc.h"
+ #include "util/u_space_overseer.h"
+-#include "util/u_builders.h"
+ #include "util/u_device.h"
+ #include "util/u_system_helpers.h"
+ #include "vive/vive_bindings.h"
++#include "util/u_device.h"
+ 
+ #include "math/m_api.h"
+ 
+@@ -37,7 +37,7 @@ namespace {
+ DEBUG_GET_ONCE_LOG_OPTION(lh_log, "LIGHTHOUSE_LOG", U_LOGGING_INFO)
+ DEBUG_GET_ONCE_BOOL_OPTION(lh_load_slimevr, "LH_LOAD_SLIMEVR", false)
+ 
+-static const size_t MAX_CONTROLLERS = 16;
++static constexpr size_t MAX_CONTROLLERS = 16;
+ 
+ 
+ struct steamvr_lh_system
+@@ -50,18 +50,6 @@ struct steamvr_lh_system
+ 
+ 	//! Pointer to driver context
+ 	std::shared_ptr<Context> ctx;
+-
+-	//! Index to the left controller.
+-	int32_t left_index;
+-
+-	//! Index to the right controller.
+-	int32_t right_index;
+-
+-	//! Index to the gamepad controller.
+-	int32_t gamepad_index;
+-
+-	//! Index to the hmd.
+-	int32_t head_index;
+ };
+ 
+ struct steamvr_lh_system *svrs = U_TYPED_CALLOC(struct steamvr_lh_system);
+@@ -303,21 +291,22 @@ Context::TrackedDeviceAdded(const char *pchDeviceSerialNumber,
+ 	CTX_INFO("New device added: %s", pchDeviceSerialNumber);
+ 	switch (eDeviceClass) {
+ 	case vr::TrackedDeviceClass_HMD: {
++		CTX_INFO("Found lighthouse HMD: %s", pchDeviceSerialNumber);
+ 		return setup_hmd(pchDeviceSerialNumber, pDriver);
+ 		break;
+ 	}
+ 	case vr::TrackedDeviceClass_Controller: {
++		CTX_INFO("Found lighthouse controller: %s", pchDeviceSerialNumber);
+ 		return setup_controller(pchDeviceSerialNumber, pDriver);
+-		break;
+ 	}
+ 	case vr::TrackedDeviceClass_TrackingReference: {
+-		CTX_INFO("Found lighthouse device: %s", pchDeviceSerialNumber);
+-		return false;
++		// trackers seem to get this role when calibrated without a HMD
++		CTX_INFO("Found lighthouse reference device: %s", pchDeviceSerialNumber);
++		return setup_controller(pchDeviceSerialNumber, pDriver);
+ 	}
+ 	case vr::TrackedDeviceClass_GenericTracker: {
+ 		CTX_INFO("Found generic tracker device: %s", pchDeviceSerialNumber);
+ 		return setup_controller(pchDeviceSerialNumber, pDriver);
+-		break;
+ 	}
+ 	default: {
+ 		CTX_WARN("Attempted to add unsupported device class: %u", eDeviceClass);
+@@ -687,7 +676,7 @@ Context::prop_container_to_device(vr::PropertyContainerHandle_t handle)
+ 	}
+ 	default: {
+ 		// If the handle corresponds to a controller
+-		if (handle >= 2 && handle <= 17) {
++		if (handle >= 2 && handle <= MAX_CONTROLLERS + 1) {
+ 			return controller[handle - 2];
+ 		} else {
+ 			return nullptr;
+@@ -721,10 +710,26 @@ Context::Log(const char *pchLogMessage)
+ xrt_result_t
+ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
+ {
+-	out_roles->left = svrs->left_index;
+-	out_roles->right = svrs->right_index;
+-	out_roles->gamepad = svrs->gamepad_index;
+-	out_roles->generation_id = 1;
++	bool update_gen = false;
++	int head, left, right, gamepad;
++
++	if (out_roles->generation_id == 0) {
++		gamepad = XRT_DEVICE_ROLE_UNASSIGNED; // No gamepads in steamvr_lh set this unassigned first run
++	}
++
++	u_device_assign_xdev_roles(xsysd->xdevs, xsysd->xdev_count, &head, &left, &right);
++
++	if (left != out_roles->left || right != out_roles->right || gamepad != out_roles->gamepad) {
++		update_gen = true;
++	}
++
++	if (update_gen) {
++		out_roles->generation_id++;
++
++		out_roles->left = left;
++		out_roles->right = right;
++		out_roles->gamepad = gamepad;
++	}
+ 
+ 	return XRT_SUCCESS;
+ }
+@@ -738,9 +743,7 @@ destroy(struct xrt_system_devices *xsysd)
+ }
+ 
+ extern "C" enum xrt_result
+-steamvr_lh_create_devices(struct xrt_session_event_sink *broadcast,
+-                          struct xrt_system_devices **out_xsysd,
+-                          struct xrt_space_overseer **out_xso)
++steamvr_lh_create_devices(struct xrt_system_devices **out_xsysd)
+ {
+ 	u_logging_level level = debug_get_log_option_lh_log();
+ 	// The driver likes to create a bunch of transient folders -
+@@ -811,7 +814,7 @@ steamvr_lh_create_devices(struct xrt_session_event_sink *broadcast,
+ 	while (true) {
+ 		svrs->ctx->run_frame();
+ 		auto cur_time = std::chrono::steady_clock::now();
+-		if (cur_time - start_time >= 3s) {
++		if (cur_time - start_time >= 8s) {
+ 			break;
+ 		}
+ 		std::this_thread::sleep_for(20ms);
+@@ -832,14 +835,6 @@ steamvr_lh_create_devices(struct xrt_session_event_sink *broadcast,
+ 	// Do creation.
+ 	// Devices to populate.
+ 	struct xrt_device *head = NULL;
+-	struct xrt_device *left = NULL, *right = NULL;
+-	struct xrt_device *left_ht = NULL, *right_ht = NULL;
+-
+-	svrs->head_index = -1;
+-	svrs->left_index = -1;
+-	svrs->right_index = -1;
+-	svrs->gamepad_index = -1;
+-
+ 
+ 	// Include the HMD
+ 	if (svrs->ctx->hmd) {
+@@ -855,38 +850,7 @@ steamvr_lh_create_devices(struct xrt_session_event_sink *broadcast,
+ 		}
+ 	}
+ 
+-	u_device_assign_xdev_roles(xsysd->xdevs, xsysd->xdev_count, &svrs->head_index, &svrs->left_index,
+-	                           &svrs->right_index);
+-
+-	if (svrs->left_index >= 0) {
+-		left = xsysd->xdevs[svrs->left_index];
+-		left_ht = u_system_devices_get_ht_device_left(xsysd);
+-		xsysd->static_roles.hand_tracking.left = left_ht;
+-	}
+-
+-	if (svrs->right_index >= 0) {
+-		right = xsysd->xdevs[svrs->right_index];
+-		right_ht = u_system_devices_get_ht_device_right(xsysd);
+-		xsysd->static_roles.hand_tracking.right = right_ht;
+-	}
+-
+-	if (!head) {
+-		U_LOG_IFL_E(level, "Unable to find HMD");
+-		destroy(xsysd);
+-		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
+-	}
+-
+ 	*out_xsysd = xsysd;
+ 
+-	u_builder_create_space_overseer_legacy( //
+-	    broadcast,                          // broadcast
+-	    head,                               // head
+-	    left,                               // left
+-	    right,                              // right
+-	    xsysd->xdevs,                       // xdevs
+-	    xsysd->xdev_count,                  // xdev_count
+-	    false,                              // root_is_unbounded
+-	    out_xso);                           // out_xso
+-
+ 	return xrt_result::XRT_SUCCESS;
+ }
+diff --git a/src/xrt/drivers/steamvr_lh/steamvr_lh_interface.h b/src/xrt/drivers/steamvr_lh/steamvr_lh_interface.h
+index a222f5e40..23621fe68 100644
+--- a/src/xrt/drivers/steamvr_lh/steamvr_lh_interface.h
++++ b/src/xrt/drivers/steamvr_lh/steamvr_lh_interface.h
+@@ -34,9 +34,7 @@ extern "C" {
+  * @ingroup drv_steamvr_lh
+  */
+ enum xrt_result
+-steamvr_lh_create_devices(struct xrt_session_event_sink *broadcast,
+-                          struct xrt_system_devices **out_xsysd,
+-                          struct xrt_space_overseer **out_xso);
++steamvr_lh_create_devices(struct xrt_system_devices **out_xsysd);
+ 
+ 
+ #ifdef __cplusplus
+diff --git a/src/xrt/targets/common/target_builder_steamvr.c b/src/xrt/targets/common/target_builder_steamvr.c
+index 59d224085..ca9bf399f 100644
+--- a/src/xrt/targets/common/target_builder_steamvr.c
++++ b/src/xrt/targets/common/target_builder_steamvr.c
+@@ -8,19 +8,20 @@
+  * @author Jakob Bornecrantz <jakob@collabora.com>
+  * @ingroup xrt_iface
+  */
++#include "util/u_builders.h"
++#include "xrt/xrt_config_drivers.h"
++
++
++#include <assert.h>
++#include <stdbool.h>
+ 
+-#include "tracking/t_hand_tracking.h"
+ #include "tracking/t_tracking.h"
+ 
+ #include "xrt/xrt_config_drivers.h"
+ #include "xrt/xrt_device.h"
+ #include "xrt/xrt_prober.h"
+ 
+-#include "util/u_builders.h"
+-#include "util/u_config_json.h"
+ #include "util/u_debug.h"
+-#include "util/u_device.h"
+-#include "util/u_sink.h"
+ #include "util/u_system_helpers.h"
+ 
+ #include "vive/vive_builder.h"
+@@ -28,11 +29,30 @@
+ #include "target_builder_interface.h"
+ 
+ #include "steamvr_lh/steamvr_lh_interface.h"
++#include "xrt/xrt_results.h"
+ 
+ #ifndef XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE
+ #error "This builder requires the SteamVR Lighthouse driver"
+ #endif
+ 
++DEBUG_GET_ONCE_LOG_OPTION(svr_log, "STEAMVR_LH_LOG", U_LOGGING_INFO)
++
++#define SVR_TRACE(...) U_LOG_IFL_T(debug_get_log_option_svr_log(), __VA_ARGS__)
++#define SVR_DEBUG(...) U_LOG_IFL_D(debug_get_log_option_svr_log(), __VA_ARGS__)
++#define SVR_INFO(...) U_LOG_IFL_I(debug_get_log_option_svr_log(), __VA_ARGS__)
++#define SVR_WARN(...) U_LOG_IFL_W(debug_get_log_option_svr_log(), __VA_ARGS__)
++#define SVR_ERROR(...) U_LOG_IFL_E(debug_get_log_option_svr_log(), __VA_ARGS__)
++#define SVR_ASSERT(predicate, ...)                                                                                     \
++	do {                                                                                                           \
++		bool p = predicate;                                                                                    \
++		if (!p) {                                                                                              \
++			U_LOG(U_LOGGING_ERROR, __VA_ARGS__);                                                           \
++			assert(false && "SVR_ASSERT failed: " #predicate);                                             \
++			exit(EXIT_FAILURE);                                                                            \
++		}                                                                                                      \
++	} while (false);
++#define SVR_ASSERT_(predicate) SVR_ASSERT(predicate, "Assertion failed " #predicate)
++
+ 
+ /*
+  *
+@@ -50,13 +70,12 @@ struct steamvr_builder
+ {
+ 	struct xrt_builder base;
+ 
+-	/*!
+-	 * Is our HMD a Valve Index?
+-	 */
++	struct xrt_device *head;
++	struct xrt_device *left_ht, *right_ht;
++
+ 	bool is_valve_index;
+ };
+ 
+-
+ /*
+  *
+  * Member functions.
+@@ -86,6 +105,13 @@ steamvr_estimate_system(struct xrt_builder *xb,
+ 	}
+ }
+ 
++static void
++steamvr_destroy(struct xrt_builder *xb)
++{
++	struct steamvr_builder *svrb = (struct steamvr_builder *)xb;
++	free(svrb);
++}
++
+ static xrt_result_t
+ steamvr_open_system(struct xrt_builder *xb,
+                     cJSON *config,
+@@ -94,17 +120,48 @@ steamvr_open_system(struct xrt_builder *xb,
+                     struct xrt_system_devices **out_xsysd,
+                     struct xrt_space_overseer **out_xso)
+ {
++	struct steamvr_builder *svrb = (struct steamvr_builder *)xb;
++
+ 	assert(out_xsysd != NULL);
+ 	assert(*out_xsysd == NULL);
+ 
+-	return steamvr_lh_create_devices(broadcast, out_xsysd, out_xso);
+-}
++	enum xrt_result result = steamvr_lh_create_devices(out_xsysd);
+ 
+-static void
+-steamvr_destroy(struct xrt_builder *xb)
+-{
+-	struct steamvr_builder *svrb = (struct steamvr_builder *)xb;
+-	free(svrb);
++	if (result != XRT_SUCCESS) {
++		SVR_ERROR("Unable to create devices");
++		steamvr_destroy(xb);
++		return result;
++	}
++
++	struct xrt_system_devices *xsysd = NULL;
++	xsysd = *out_xsysd;
++
++	if (xsysd->static_roles.head == NULL) {
++		SVR_ERROR("Unable to find HMD");
++		steamvr_destroy(xb);
++		return XRT_ERROR_DEVICE_CREATION_FAILED;
++	}
++
++	svrb->head = xsysd->static_roles.head;
++
++	svrb->left_ht = u_system_devices_get_ht_device_left(xsysd);
++	xsysd->static_roles.hand_tracking.left = svrb->left_ht;
++
++	svrb->right_ht = u_system_devices_get_ht_device_right(xsysd);
++	xsysd->static_roles.hand_tracking.right = svrb->right_ht;
++
++	u_builder_create_space_overseer_legacy( //
++	    broadcast,                          // broadcast
++	    svrb->head,                         // head
++	    svrb->left_ht,                      // left
++	    svrb->right_ht,                     // right
++	    xsysd->xdevs,                       // xdevs
++	    xsysd->xdev_count,                  // xdev_count
++	    false,                              // root_is_unbounded
++	    out_xso);                           // out_xso
++
++
++	return result;
+ }
+ 
+ 
