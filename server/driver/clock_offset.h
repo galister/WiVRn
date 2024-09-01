@@ -35,6 +35,7 @@ struct clock_offset
 	// y = ax+b
 	int64_t b = 0;
 	double a = 1;
+	bool stable = false;
 
 	operator bool() const
 	{
@@ -44,6 +45,8 @@ struct clock_offset
 	XrTime from_headset(XrTime) const;
 
 	XrTime to_headset(XrTime timestamp_ns) const;
+
+	bool is_stable() const;
 };
 
 class clock_offset_estimator

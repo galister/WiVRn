@@ -126,8 +126,13 @@ void clock_offset_estimator::add_sample(const xrt::drivers::wivrn::from_headset:
 	double a = cov / v;
 	double b = mean_y - a * mean_x;
 
+	b = y0 + b - int64_t(a * x0);
+
+	// a changed less than 1% and b changed less than 200ms
+	offset.stable = std::abs((a - offset.a) / offset.a) < 0.01 && std::abs((b - (double)offset.b)) < 200'000'000;
+
 	offset.a = a;
-	offset.b = y0 + b - int64_t(a * x0);
+	offset.b = b;
 	U_LOG_D("clock relations: headset = a*x+b where a=%f b=%ldµs", offset.a, offset.b / 1000);
 }
 
@@ -145,4 +150,9 @@ XrTime clock_offset::from_headset(XrTime ts) const
 XrTime clock_offset::to_headset(XrTime timestamp_ns) const
 {
 	return a * timestamp_ns + b;
+}
+
+bool clock_offset::is_stable() const
+{
+	return stable;
 }
